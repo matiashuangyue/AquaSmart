@@ -6,105 +6,64 @@ import {
 import StatCard from "../components/StatCard";
 import AlertsPanel from "../components/AlertsPanel";
 import ActionConfirm from "../components/ActionConfirm";
+import { usecases } from "../../composition/container";
+import { DEFAULT_THRESHOLDS } from "../../domain/defaults";
+import { evaluate } from "../../domain/evaluate";
 
-const TH = {
-  ph: { min: 7.2, max: 7.8 },
-  cl: { min: 0.5, max: 1.5 },
-  t:  { min: 20,  max: 35  },
-};
-
-const LS_KEY = "aquasmart.history.ph";
-
-function evalState(val, {min,max}) {
-  if (val < min || val > max) return "danger";
-  const r=max-min;
-  if (val < min + r*0.07 || val > max - r*0.07) return "warn";
-  return "ok";
-}
-
-function randomData() {
-  return {
-    ph: +(6.5 + Math.random()*2).toFixed(1),
-    cl: +(0.1 + Math.random()*2).toFixed(1),
-    t:  +(22 + Math.random()*10).toFixed(0),
-  };
-}
-
-const timeLabel = (d = new Date()) =>
-  d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-function seedHistory() {
-  const base = [];
-  const now = Date.now();
-  let idx = 0;
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now - i * 5 * 60 * 1000);
-    base.push({ idx: idx++, time: timeLabel(d), ph: 7.2 });
-  }
-  base.push({ idx: idx++, time: timeLabel(), ph: 6.9 });
-  return base;
-}
 
 export default function Dashboard() {
-  const [data, setData] = useState({ ph: 6.9, cl: 0.2, t: 28 });
+  const [th, setTh] = useState(DEFAULT_THRESHOLDS);
   const [history, setHistory] = useState([]);
+  const [data, setData] = useState({ ph: 6.9, cl: 0.8, t: 28 });
+  
 
-  // cargar historial de localStorage
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length) {
-          setHistory(parsed);
-          const last = parsed[parsed.length - 1];
-          setData(d => ({ ...d, ph: +(last.ph).toFixed(1) }));
-          return;
-        }
-      }
-    } catch {}
-    setHistory(seedHistory());
+    (async () => {
+      const [h, tload] = await Promise.all([
+        usecases.getHistory(),
+        usecases.loadThresholds()
+      ]);
+      setHistory(h);
+      setTh(tload);
+      const last = h.at(-1);
+      if (last) setData({ ph: last.ph, cl: last.cl, t: last.t });
+    })();
   }, []);
 
-  // guardar historial cuando cambia
-  useEffect(() => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(history)); } catch {}
-  }, [history]);
+  const hasTh = th && th.ph && th.cl && th.t;
+const s = hasTh ? {
+  ph: evaluate(data.ph, th.ph),
+  cl: evaluate(data.cl, th.cl),
+  t:  evaluate(data.t,  th.t),
+} : { ph: "ok", cl: "ok", t: "ok" };
 
-  const s = {
-    ph: evalState(data.ph, TH.ph),
-    cl: evalState(data.cl, TH.cl),
-    t:  evalState(data.t,  TH.t),
-  };
 
   const alerts = [
-    ...(s.ph==="warn"||s.ph==="danger" ? [{
+    ...(s.ph!=="ok" ? [{
       type: s.ph==="danger"?"danger":"warn",
-      title: s.ph==="danger"?"pH crítico":"pH bajo",
-      msg: `pH: ${data.ph}. ${s.ph==="danger"?"Agregue regulador alcalino de inmediato.":"Se recomienda agregar regulador alcalino."}`,
-      time: timeLabel()
+      title: s.ph==="danger"?"pH crítico":"pH fuera de rango",
+      msg: `pH: ${data.ph}. ${s.ph==="danger"?"Agregue regulador alcalino.":"Revise y ajuste pH."}`,
+      time: history.at(-1)?.time || ""
     }] : []),
     ...(s.cl==="danger" ? [{
       type: "danger",
       title: "Nivel de cloro crítico",
-      msg: `Cloro libre: ${data.cl} ppm. Agregue cloro inmediatamente.`,
-      time: timeLabel()
+      msg: `Cloro libre: ${data.cl} ppm. Agregue cloro.`,
+      time: history.at(-1)?.time || ""
     }] : [])
   ];
 
-  function simulate() {
-    const next = randomData();
-    setData(next);
-    setHistory(h => {
-      const nextIdx = (h[h.length - 1]?.idx ?? -1) + 1;
-      const arr = [...h, { idx: nextIdx, time: timeLabel(), ph: next.ph }];
-      if (arr.length > 30) arr.shift();
-      return arr;
-    });
+  async function simulate() {
+    const r = await usecases.simulateReading();
+    setData({ ph: r.ph, cl: r.cl, t: r.t });
+    setHistory(h => [...h, { idx: r.idx, time: r.time, ph: r.ph, cl: r.cl, t: r.t }]);
   }
 
-  function clearHistory() {
-    setHistory(seedHistory());
+  async function clearHistory() {
+    const h = await usecases.clearHistory();
+    setHistory(h);
+    const last = h.at(-1);
+    if (last) setData({ ph: last.ph, cl: last.cl, t: last.t });
   }
 
   return (
@@ -132,7 +91,7 @@ export default function Dashboard() {
         <StatCard title="Temperatura" value={data.t} unit="°C"   range="Rango normal: 20 – 35 °C"   state={s.t} icon={Thermometer} />
       </div>
 
-      {/* Gráfico con idx en eje X */}
+      {/* Gráfico pH vs tiempo (con idx único) */}
       <div className="bg-white rounded-2xl shadow-sm border p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-slate-800">Evolución de pH</h3>
@@ -157,13 +116,7 @@ export default function Dashboard() {
                   return p ? p.time : v;
                 }}
               />
-              <Line
-                type="monotone"
-                dataKey="ph"
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
+              <Line type="monotone" dataKey="ph" strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -1,0 +1,64 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"               // <- luego cambiamos a postgresql para deploy
+  url      = env("DATABASE_URL")
+}
+
+model Pool {
+  id        String       @id @default(cuid())
+  name      String
+  createdAt DateTime     @default(now())
+  measurements Measurement[]
+  threshold Threshold?
+  actions   ActionLog[]
+  alerts    Alert[]
+}
+
+model Measurement {
+  id        String   @id @default(cuid())
+  poolId    String
+  pool      Pool     @relation(fields: [poolId], references: [id])
+  ph        Float
+  freeChlor Float
+  tempC     Float
+  takenAt   DateTime @default(now())
+
+  @@index([poolId, takenAt])
+}
+
+model Threshold {
+  id        String   @id @default(cuid())
+  poolId    String   @unique
+  pool      Pool     @relation(fields: [poolId], references: [id])
+  phMin     Float    @default(7.2)
+  phMax     Float    @default(7.8)
+  chlorMin  Float    @default(0.5)
+  chlorMax  Float    @default(1.5)
+  tempMin   Float    @default(20)
+  tempMax   Float    @default(35)
+  updatedAt DateTime @updatedAt
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  poolId    String
+  pool      Pool     @relation(fields: [poolId], references: [id])
+  type      String
+  message   String
+  level     String   // "warning" | "critical"
+  createdAt DateTime @default(now())
+  resolvedAt DateTime?
+}
+
+model ActionLog {
+  id        String   @id @default(cuid())
+  poolId    String
+  pool      Pool     @relation(fields: [poolId], references: [id])
+  action    String
+  note      String?
+  createdAt DateTime @default(now())
+}
