@@ -9,14 +9,17 @@ const Item = ({ icon: Icon, text, active=false }) => (
 );
 
 export default function Sidebar() {
+  function go(view) {
+    window.dispatchEvent(new CustomEvent("nav:go", { detail: view }));
+  }
+
   return (
     <div className="h-full p-4">
       <div className="text-2xl font-bold text-indigo-600 mb-6">AquaSmart</div>
       <nav className="space-y-2 text-slate-700">
-        <a className="block px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">Panel principal</a>
-        <a className="block px-3 py-2 rounded-lg hover:bg-slate-100">Historial</a>
-        <a className="block px-3 py-2 rounded-lg hover:bg-slate-100">Estadísticas</a>
-        <a className="block px-3 py-2 rounded-lg hover:bg-slate-100">Configuración</a>
+        <button onClick={()=>go("dash")} className="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">Panel principal</button>
+        <button onClick={()=>go("history")} className="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100">Historial</button>
+        <button onClick={()=>go("config")} className="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100">Configuración</button>
       </nav>
     </div>
   );

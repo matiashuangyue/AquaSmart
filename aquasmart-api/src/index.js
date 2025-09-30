@@ -62,15 +62,22 @@ app.get("/api/thresholds", async (req, res) => {
 
 // PUT actualizar umbrales
 app.put("/api/thresholds", async (req, res) => {
-  const poolId = req.body.poolId || "pool1";
-  const { phMin, phMax, chlorMin, chlorMax, tempMin, tempMax } = req.body;
-  const th = await prisma.threshold.upsert({
-    where: { poolId },
-    update: { phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
-    create: { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax }
-  });
-  res.json(th);
+  try {
+    const { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax } = req.body;
+    if (!poolId) return res.status(400).json({ error: "poolId requerido" });
+
+    const up = await prisma.threshold.upsert({
+      where: { poolId },
+      update: { phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
+      create: { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax }
+    });
+    res.json(up);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Error guardando umbrales" });
+  }
 });
+
 
 const PORT = process.env.PORT || 8080;
 app.get("/", (req, res) => {

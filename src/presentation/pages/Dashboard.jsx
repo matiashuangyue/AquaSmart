@@ -10,7 +10,7 @@ import { usecases } from "../../composition/container";
 import { DEFAULT_THRESHOLDS } from "../../domain/defaults";
 import { evaluate } from "../../domain/evaluate";
 
-export default function Dashboard() {
+export default function Dashboard({ thVersion = 0 }) {  // 👈 recibe prop
   const [th, setTh] = useState(DEFAULT_THRESHOLDS);
   const [history, setHistory] = useState([]);
   const [data, setData] = useState({ ph: 6.9, cl: 0.8, t: 28 });
@@ -18,15 +18,18 @@ export default function Dashboard() {
   useEffect(() => {
     (async () => {
       const [h, tload] = await Promise.all([
-        usecases.getHistory(),
-        usecases.loadThresholds()
+        usecases.getHistory("pool1"),
+        usecases.loadThresholds("pool1"),
       ]);
       setHistory(h);
       setTh(tload);
       const last = h.at(-1);
       if (last) setData({ ph: last.ph, cl: last.cl, t: last.t });
+      // Debug opcional:
+      // console.log("[Dashboard] th cargado:", tload);
     })();
-  }, []);
+  }, [thVersion]); // 👈 vuelve a cargar al guardar en Config
+
 
   const hasTh = th && th.ph && th.cl && th.t;
   const s = hasTh ? {
@@ -36,19 +39,27 @@ export default function Dashboard() {
   } : { ph: "ok", cl: "ok", t: "ok" };
 
   const alerts = [
-    ...(s.ph!=="ok" ? [{
-      type: s.ph==="danger"?"danger":"warn",
-      title: s.ph==="danger"?"pH crítico":"pH fuera de rango",
-      msg: `pH: ${data.ph}. ${s.ph==="danger"?"Agregue regulador alcalino.":"Revise y ajuste pH."}`,
-      time: history.at(-1)?.time || ""
-    }] : []),
-    ...(s.cl==="danger" ? [{
-      type: "danger",
-      title: "Nivel de cloro crítico",
-      msg: `Cloro libre: ${data.cl} ppm. Agregue cloro.`,
-      time: history.at(-1)?.time || ""
-    }] : [])
-  ];
+  ...(s.ph !== "ok" ? [{
+    type: s.ph === "danger" ? "danger" : "warn",
+    title: s.ph === "danger" ? "pH crítico" : "pH fuera de rango",
+    msg: `pH: ${data.ph}. ${s.ph === "danger" ? "Agregue regulador alcalino." : "Revise y ajuste pH."}`,
+    time: history.at(-1)?.time || ""
+  }] : []),
+
+  ...(s.cl !== "ok" ? [{
+    type: s.cl === "danger" ? "danger" : "warn",
+    title: s.cl === "danger" ? "Nivel de cloro crítico" : "Cloro fuera de rango",
+    msg: `Cloro libre: ${data.cl} ppm. ${s.cl === "danger" ? "Agregue cloro." : "Revise y ajuste cloro."}`,
+    time: history.at(-1)?.time || ""
+  }] : []),
+
+  ...(s.t !== "ok" ? [{
+    type: s.t === "danger" ? "danger" : "warn",
+    title: s.t === "danger" ? "Temperatura crítica" : "Temperatura fuera de rango",
+    msg: `Temperatura: ${data.t} °C. ${s.t === "danger" ? "Revise urgentemente la climatización." : "Ajuste el control de temperatura."}`,
+    time: history.at(-1)?.time || ""
+  }] : []),
+];
 
   async function simulate() {
     const r = await usecases.simulateReading();
@@ -60,6 +71,22 @@ export default function Dashboard() {
     // Limpia solo la serie del gráfico (no toca tarjetas ni BD)
     setHistory([]);
   }
+
+ const ranges = th && th.ph && th.cl && th.t ? {
+  ph: `Rango configurado: ${th.ph.min} – ${th.ph.max}`,
+  cl: `Rango configurado: ${th.cl.min} – ${th.cl.max} ppm`,
+  t:  `Rango configurado: ${th.t.min} – ${th.t.max} °C`,
+} : {
+  ph: "Rango configurado: (no definido)",
+  cl: "Rango configurado: (no definido)",
+  t:  "Rango configurado: (no definido)",
+};
+
+const rangesNormal = {
+  ph: "Rango normal: 7.2 – 7.8",
+  cl: "Rango normal: 0.5 – 1.5 ppm",
+  t:  "Rango normal: 20 – 35 °C",
+};
 
   return (
     <div className="space-y-5">
@@ -82,10 +109,32 @@ export default function Dashboard() {
 
       {/* Métricas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard title="Nivel de pH" value={data.ph} unit=""  range="Rango normal: 7.2 – 7.8"    state={s.ph} icon={FlaskConical} />
-        <StatCard title="Cloro Libre" value={data.cl} unit="ppm" range="Rango normal: 0.5 – 1.5 ppm" state={s.cl} icon={Droplets} />
-        <StatCard title="Temperatura" value={data.t} unit="°C"   range="Rango normal: 20 – 35 °C"   state={s.t} icon={Thermometer} />
-      </div>
+  <StatCard
+    title="Nivel de pH"
+    value={data.ph}
+    unit=""
+    range={`${ranges.ph}\n${rangesNormal.ph}`}   // 👈 dos líneas
+    state={s.ph}
+    icon={FlaskConical}
+  />
+  <StatCard
+    title="Cloro Libre"
+    value={data.cl}
+    unit="ppm"
+    range={`${ranges.cl}\n${rangesNormal.cl}`}
+    state={s.cl}
+    icon={Droplets}
+  />
+  <StatCard
+    title="Temperatura"
+    value={data.t}
+    unit="°C"
+    range={`${ranges.t}\n${rangesNormal.t}`}
+    state={s.t}
+    icon={Thermometer}
+  />
+</div>
+
 
       {/* Gráfico pH vs tiempo (único bloque, condicional) */}
       <div className="bg-white rounded-2xl shadow-sm border p-4">
@@ -128,8 +177,13 @@ export default function Dashboard() {
       {/* Paneles inferiores */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <AlertsPanel alerts={alerts} />
-        <ActionConfirm />
+        <ActionConfirm onConfirm={(text) => {
+          console.log("Acción correctiva registrada:", text);
+          // opcional: enviar a backend
+          // fetch(`${API}/api/actions`, { method:"POST", body: JSON.stringify({poolId:"pool1", text}) })
+        }} />
       </div>
+
     </div>
   );
 }

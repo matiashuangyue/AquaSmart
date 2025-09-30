@@ -1,4 +1,4 @@
-export default function StatCard({ title, value, unit, range, state="ok", icon:Icon }) {
+export default function StatCard({ title, value, unit, range, state="ok", icon: Icon }) {
   const bar = {
     ok: "bg-emerald-200",
     warn: "bg-amber-200",
@@ -22,10 +22,15 @@ export default function StatCard({ title, value, unit, range, state="ok", icon:I
       <div className="text-4xl font-semibold text-slate-900">
         {value}<span className="text-lg align-top ml-1 text-slate-500">{unit}</span>
       </div>
-      <div className="text-xs text-slate-500 mt-1">{range}</div>
+
+      {/* ahora soporta saltos de línea con '\n' */}
+      <div className="text-xs text-slate-500 mt-1 whitespace-pre-line">{range}</div>
 
       <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
-        <div className={`h-2 rounded-full ${bar}`} style={{ width: state==="ok"? "70%": state==="warn"?"45%":"20%" }} />
+        <div
+          className={`h-2 rounded-full ${bar}`}
+          style={{ width: state === "ok" ? "70%" : state === "warn" ? "45%" : "20%" }}
+        />
       </div>
 
       <div className={`mt-2 inline-flex items-center text-xs px-2 py-1 rounded-full border ${chip}`}>

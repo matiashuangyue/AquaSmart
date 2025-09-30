@@ -1,7 +1,8 @@
-// Devuelve "ok" | "warn" | "danger" según umbral
-export function evaluate(value, { min, max }) {
-    if (value < min || value > max) return "danger";
-    const r = max - min;
-    return (value < min + r * 0.07 || value > max - r * 0.07) ? "warn" : "ok";
+export function evaluate(value, th) {
+  if (!th || th.min === undefined || th.max === undefined) return "ok";
+
+  if (value < th.min || value > th.max) {
+    return "danger";
   }
-  
+  return "ok";
+}
