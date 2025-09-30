@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
+import authRoutes from "./routes/auth.js";
 
 const prisma = new PrismaClient();
 const app = express();
@@ -10,6 +11,9 @@ app.use(express.json());
 
 // Helper: formato hora
 const toHHMM = (d) => new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+// Middleware API Key
+app.use("/api/auth", authRoutes);
 
 // GET último valor
 app.get("/api/measurements/latest", async (req, res) => {

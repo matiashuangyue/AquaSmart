@@ -10,12 +10,10 @@ import { usecases } from "../../composition/container";
 import { DEFAULT_THRESHOLDS } from "../../domain/defaults";
 import { evaluate } from "../../domain/evaluate";
 
-
 export default function Dashboard() {
   const [th, setTh] = useState(DEFAULT_THRESHOLDS);
   const [history, setHistory] = useState([]);
   const [data, setData] = useState({ ph: 6.9, cl: 0.8, t: 28 });
-  
 
   useEffect(() => {
     (async () => {
@@ -31,12 +29,11 @@ export default function Dashboard() {
   }, []);
 
   const hasTh = th && th.ph && th.cl && th.t;
-const s = hasTh ? {
-  ph: evaluate(data.ph, th.ph),
-  cl: evaluate(data.cl, th.cl),
-  t:  evaluate(data.t,  th.t),
-} : { ph: "ok", cl: "ok", t: "ok" };
-
+  const s = hasTh ? {
+    ph: evaluate(data.ph, th.ph),
+    cl: evaluate(data.cl, th.cl),
+    t:  evaluate(data.t,  th.t),
+  } : { ph: "ok", cl: "ok", t: "ok" };
 
   const alerts = [
     ...(s.ph!=="ok" ? [{
@@ -59,22 +56,21 @@ const s = hasTh ? {
     setHistory(h => [...h, { idx: r.idx, time: r.time, ph: r.ph, cl: r.cl, t: r.t }]);
   }
 
-  async function clearHistory() {
-    const h = await usecases.clearHistory();
-    setHistory(h);
-    const last = h.at(-1);
-    if (last) setData({ ph: last.ph, cl: last.cl, t: last.t });
+  function clearChart() {
+    // Limpia solo la serie del gráfico (no toca tarjetas ni BD)
+    setHistory([]);
   }
 
   return (
     <div className="space-y-5">
       {/* Controles */}
       <div className="flex justify-end gap-2">
+        {/* antes: clearHistory */}
         <button
-          onClick={clearHistory}
+          onClick={clearChart}
           className="flex items-center gap-2 border px-3 py-2 rounded-xl text-slate-700 hover:bg-slate-100"
         >
-          <Trash2 className="w-4 h-4" /> Borrar historial
+          <Trash2 className="w-4 h-4" /> Limpiar gráfico {/* antes: Borrar historial */}
         </button>
         <button
           onClick={simulate}
@@ -91,35 +87,42 @@ const s = hasTh ? {
         <StatCard title="Temperatura" value={data.t} unit="°C"   range="Rango normal: 20 – 35 °C"   state={s.t} icon={Thermometer} />
       </div>
 
-      {/* Gráfico pH vs tiempo (con idx único) */}
+      {/* Gráfico pH vs tiempo (único bloque, condicional) */}
       <div className="bg-white rounded-2xl shadow-sm border p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold text-slate-800">Evolución de pH</h3>
           <span className="text-xs text-slate-500">Se actualiza al simular</span>
         </div>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={history} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="idx"
-                tick={{ fontSize: 12 }}
-                tickFormatter={(v) => {
-                  const p = history.find(d => d.idx === v);
-                  return p ? p.time : "";
-                }}
-              />
-              <YAxis domain={[6.5, 8.5]} tick={{ fontSize: 12 }} />
-              <Tooltip
-                labelFormatter={(v) => {
-                  const p = history.find(d => d.idx === v);
-                  return p ? p.time : v;
-                }}
-              />
-              <Line type="monotone" dataKey="ph" strokeWidth={2} dot={false} isAnimationActive={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+
+        {history.length === 0 ? (
+          <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+            Gráfico vacío. Usa “Simular lectura” o recargá la página.
+          </div>
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={history} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="idx"
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(v) => {
+                    const p = history.find(d => d.idx === v);
+                    return p ? p.time : "";
+                  }}
+                />
+                <YAxis domain={[6.5, 8.5]} tick={{ fontSize: 12 }} />
+                <Tooltip
+                  labelFormatter={(v) => {
+                    const p = history.find(d => d.idx === v);
+                    return p ? p.time : v;
+                  }}
+                />
+                <Line type="monotone" dataKey="ph" strokeWidth={2} dot={false} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       {/* Paneles inferiores */}

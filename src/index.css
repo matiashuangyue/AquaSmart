@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 :root { color-scheme: light; }
 
 .card  { @apply bg-white shadow-sm rounded-2xl p-4; }

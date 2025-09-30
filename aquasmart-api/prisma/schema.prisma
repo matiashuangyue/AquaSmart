@@ -1,21 +1,82 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"               // <- luego cambiamos a postgresql para deploy
+  provider = "sqlite" // cambia a "postgresql" cuando subas a server
   url      = env("DATABASE_URL")
 }
 
+// ===== Núcleo de usuarios / personas / permisos =====
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  active       Boolean  @default(true)
+  passwordHash String   // <- ahora sí obligatorio
+  person       Person?
+  pools        Pool[]
+  histories    History[]
+  actions      ActionLog[]
+  groups       UserGroup[]
+  createdAt    DateTime @default(now())
+}
+
+
+
+model Person {
+  id     String @id @default(cuid())
+  name   String
+  email  String @unique
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model Group {
+  id    String            @id @default(cuid())
+  name  String            @unique
+  desc  String?
+  users UserGroup[]
+  perms GroupPermission[]
+}
+
+model Permission {
+  id     String            @id @default(cuid())
+  code   String            @unique
+  groups GroupPermission[]
+}
+
+model UserGroup {
+  userId  String
+  groupId String
+  user    User   @relation(fields: [userId], references: [id])
+  group   Group  @relation(fields: [groupId], references: [id])
+
+  @@id([userId, groupId])
+}
+
+model GroupPermission {
+  groupId      String
+  permissionId String
+  group        Group      @relation(fields: [groupId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([groupId, permissionId])
+}
+
+// ===== Dominio AquaSmart =====
+
 model Pool {
-  id        String       @id @default(cuid())
-  name      String
-  createdAt DateTime     @default(now())
+  id           String        @id @default(cuid())
+  name         String
+  ownerId      String?
+  owner        User?         @relation(fields: [ownerId], references: [id])
+  createdAt    DateTime      @default(now())
   measurements Measurement[]
-  threshold Threshold?
-  actions   ActionLog[]
-  alerts    Alert[]
+  threshold    Threshold?
+  alerts       Alert[]
+  actions      ActionLog[]
+  histories    History[]
 }
 
 model Measurement {
@@ -44,21 +105,40 @@ model Threshold {
 }
 
 model Alert {
-  id        String   @id @default(cuid())
-  poolId    String
-  pool      Pool     @relation(fields: [poolId], references: [id])
-  type      String
-  message   String
-  level     String   // "warning" | "critical"
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  poolId     String
+  pool       Pool      @relation(fields: [poolId], references: [id])
+  type       String
+  message    String
+  level      String // "warning" | "critical"
+  createdAt  DateTime  @default(now())
   resolvedAt DateTime?
 }
 
+// Acciones correctivas
 model ActionLog {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   poolId    String
-  pool      Pool     @relation(fields: [poolId], references: [id])
+  pool      Pool      @relation(fields: [poolId], references: [id])
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id])
   action    String
   note      String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  History   History[]
+}
+
+// Historial de eventos
+model History {
+  id       String     @id @default(cuid())
+  poolId   String
+  pool     Pool       @relation(fields: [poolId], references: [id])
+  userId   String?
+  user     User?      @relation(fields: [userId], references: [id])
+  date     DateTime   @default(now())
+  summary  String
+  actionId String?
+  action   ActionLog? @relation(fields: [actionId], references: [id])
+
+  @@index([poolId, date])
 }
