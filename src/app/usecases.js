@@ -17,12 +17,24 @@ function seedHistory() {
   let idx = 0;
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now - i * 5 * 60 * 1000); // cada 5 min
-    base.push({ idx: idx++, time: timeLabel(d), ph: 7.2, cl: 1.0, t: 28 });
+    base.push({ 
+      idx: idx++, 
+      time: d.toISOString(),     // 👈 FECHA+HORA ISO
+      ph: 7.2, 
+      cl: 1.0, 
+      t: 28 
+    });
   }
-  base.push({ idx: idx++, time: timeLabel(), ph: 6.9, cl: 0.8, t: 28 });
+  const dNow = new Date();
+  base.push({ 
+    idx: idx++, 
+    time: dNow.toISOString(),    // 👈 FECHA+HORA ISO
+    ph: 6.9, 
+    cl: 0.8, 
+    t: 28 
+  });
   return base;
 }
-
 export function makeUsecases(readingsRepo, thresholdsRepo) {
   return {
     // ===== Lecturas / Historial =====
@@ -44,27 +56,40 @@ export function makeUsecases(readingsRepo, thresholdsRepo) {
       return base;
     },
 
-    async simulateReading(poolId = "pool1") {
-      // Intentar contra la API
-      try {
-        const r = await apiSimulate(poolId); // {idx,time,ph,cl,t}
-        // Si tu repo soporta push local, lo actualizamos para que el gráfico avance sin re-fetch
-        await readingsRepo.push?.(r, poolId);
-        return r;
-      } catch (e) {
-        // Fallback local (por si la API no responde)
-        const hist = await readingsRepo.getHistory(poolId);
-        const idx = (hist?.at(-1)?.idx ?? -1) + 1;
-        const vals = randomValues();
-        const reading = {
-          idx,
-          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          ...vals,
-        };
-        await readingsRepo.push?.(reading, poolId);
-        return reading;
-      }
-    },
+async simulateReading(poolId = "pool1") {
+  // Intentar contra la API
+  try {
+    let r = await apiSimulate(poolId); // {idx,time,ph,cl,t}
+
+    // 🔹 Normalizamos el campo time que viene de la API
+    // Si no es una fecha parseable (ej: "04:02 p. m."), usamos ahora en ISO
+    const parsed = Date.parse(r.time);
+    if (!r.time || Number.isNaN(parsed)) {
+      r = {
+        ...r,
+        time: new Date().toISOString(),
+      };
+    }
+
+    await readingsRepo.push?.(r, poolId);
+    return r;
+  } catch (e) {
+    // 🔹 Fallback local (ya estaba bien)
+    const hist = await readingsRepo.getHistory(poolId);
+    const idx = (hist?.at(-1)?.idx ?? -1) + 1;
+    const vals = randomValues();
+    const reading = {
+      idx,
+      time: new Date().toISOString(), // ISO correcto
+      ...vals,
+    };
+    await readingsRepo.push?.(reading, poolId);
+    return reading;
+  }
+}
+,
+
+
 
     // ===== Umbrales =====
     loadThresholds: (poolId = "pool1") => thresholdsRepo.load(poolId),
