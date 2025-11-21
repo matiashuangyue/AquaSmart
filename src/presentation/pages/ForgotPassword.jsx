@@ -1,37 +1,35 @@
 import { useState } from "react";
-import { signup } from "../../infra/http/auth";
-import { saveToken } from "../../lib/session";
 
-export default function Signup({ onSigned, goLogin }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
-  const [pw, setPw] = useState("");
+export default function ForgotPassword({ goLogin }) {
+  const [emailOrUser, setEmailOrUser] = useState("");
   const [err, setErr] = useState("");
+  const [okMsg, setOkMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
     setErr("");
+    setOkMsg("");
 
-    if (!name.trim() || !email.trim() || !username.trim() || !pw.trim()) {
-      setErr("Todos los campos son obligatorios.");
+    if (!emailOrUser.trim()) {
+      setErr("Ingresá tu email o usuario.");
       return;
     }
 
     try {
       setLoading(true);
-      const { token } = await signup({
-        name,
-        email,
-        username,
-        password: pw,
-      });
 
-      saveToken(token);
-      onSigned?.();
+      // 👉 Acá más adelante podés llamar a tu API real:
+      // await requestPasswordReset({ emailOrUsername: emailOrUser });
+      //
+      // Por ahora simulamos:
+      await new Promise((r) => setTimeout(r, 1000));
+
+      setOkMsg(
+        "Si la cuenta existe, te enviaremos instrucciones para restablecer la contraseña."
+      );
     } catch (e) {
-      setErr(e.message || "Error al crear la cuenta.");
+      setErr(e.message || "No se pudo procesar la solicitud.");
     } finally {
       setLoading(false);
     }
@@ -39,26 +37,25 @@ export default function Signup({ onSigned, goLogin }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-emerald-700 flex items-center justify-center px-4 py-6 relative">
-      {/* luz decorativa */}
+      {/* brillo */}
       <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top,_#ffffff_0,_transparent_60%)] pointer-events-none" />
 
       <div className="relative z-10 w-full max-w-5xl">
         {/* Header */}
         <header className="text-center mb-6 sm:mb-10">
           <h1 className="text-3xl sm:text-4xl font-semibold text-white drop-shadow-lg">
-            Crear cuenta en AquaSmart
+            Recuperar contraseña
           </h1>
           <p className="text-sm text-emerald-200 mt-1">
-            Comenzá a monitorear la calidad del agua en tus piletas.
+            Ingresá tu email o usuario para restablecer el acceso a AquaSmart.
           </p>
         </header>
 
-        {/* Layout principal */}
         <div className="grid md:grid-cols-[1fr_0.9fr] gap-6 items-start">
-          {/* Card Signup */}
+          {/* Card principal */}
           <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/40 p-6 sm:p-7">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-400 text-slate-900 flex items-center justify-center text-lg font-bold shadow-md">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-lg font-bold shadow-md">
                 A
               </div>
               <div>
@@ -66,7 +63,7 @@ export default function Signup({ onSigned, goLogin }) {
                   AquaSmart
                 </p>
                 <h2 className="text-lg font-semibold text-slate-800">
-                  Crear cuenta
+                  ¿Olvidaste tu contraseña?
                 </h2>
               </div>
             </div>
@@ -74,53 +71,13 @@ export default function Signup({ onSigned, goLogin }) {
             <form onSubmit={onSubmit} className="space-y-3">
               <div>
                 <label className="block text-xs text-slate-600 mb-1">
-                  Nombre completo
+                  Email o usuario
                 </label>
                 <input
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 border-slate-200"
-                  placeholder="Ej: Juan Pérez"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Email
-                </label>
-                <input
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 border-slate-200"
-                  placeholder="ej: usuario@gmail.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Nombre de usuario
-                </label>
-                <input
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 border-slate-200"
-                  placeholder="ej: yuehuang"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-600 mb-1">
-                  Contraseña
-                </label>
-                <input
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 border-slate-200"
-                  type="password"
-                  placeholder="••••••••"
-                  value={pw}
-                  onChange={(e) => setPw(e.target.value)}
+                  placeholder="ej: admin@aquasmart.com"
+                  value={emailOrUser}
+                  onChange={(e) => setEmailOrUser(e.target.value)}
                   disabled={loading}
                 />
               </div>
@@ -128,6 +85,12 @@ export default function Signup({ onSigned, goLogin }) {
               {err && (
                 <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
                   {err}
+                </div>
+              )}
+
+              {okMsg && (
+                <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  {okMsg}
                 </div>
               )}
 
@@ -139,40 +102,40 @@ export default function Signup({ onSigned, goLogin }) {
                 {loading && (
                   <span className="w-4 h-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
                 )}
-                {loading ? "Creando cuenta..." : "Registrarme"}
+                {loading ? "Enviando instrucciones..." : "Enviar instrucciones"}
               </button>
             </form>
 
-            <div className="pt-2 text-center text-xs text-slate-600">
-              ¿Ya tenés cuenta?{" "}
+            <div className="pt-3 text-center text-xs text-slate-600">
+              ¿Ya recordaste tu contraseña?{" "}
               <button
                 type="button"
                 onClick={goLogin}
                 className="text-indigo-600 font-medium hover:underline"
               >
-                Ingresá
+                Volver a iniciar sesión
               </button>
             </div>
           </div>
 
-          {/* Lateral informativo (solo desktop) */}
+          {/* Lateral informativo */}
           <div className="hidden md:flex flex-col justify-between text-white space-y-4">
             <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-5 border border-white/20 shadow-xl">
               <h3 className="text-sm font-semibold text-emerald-200">
-                Beneficios de crear tu cuenta
+                ¿Cómo funciona el restablecimiento?
               </h3>
 
-              <ul className="mt-3 space-y-2 text-xs text-indigo-100">
-                <li>• Monitoreo en tiempo real de la calidad del agua.</li>
-                <li>• Alertas inteligentes por parámetros fuera de rango.</li>
-                <li>• Historial completo de lecturas.</li>
-                <li>• Configuración de umbrales personalizados.</li>
-                <li>• Acceso desde móvil y escritorio.</li>
-              </ul>
+              <ol className="mt-3 space-y-2 text-xs text-indigo-100 list-decimal list-inside">
+                <li>Ingresás tu email o usuario asociado a AquaSmart.</li>
+                <li>El sistema genera un enlace o código temporal.</li>
+                <li>Recibís instrucciones por email (en una implementación real).</li>
+                <li>Definís una nueva contraseña segura.</li>
+              </ol>
 
-              <div className="mt-4 border-t border-white/20 pt-3 text-sm text-indigo-100/80">
-                Estado del servidor:{" "}
-                <span className="text-emerald-300 font-medium">Online</span>
+              <div className="mt-4 border-t border-white/20 pt-3 text-xs text-indigo-100/80">
+                Este flujo demuestra que el sistema está pensado para una
+                recuperación segura de credenciales, incluso si todavía no
+                tenés el backend implementado.
               </div>
             </div>
 
