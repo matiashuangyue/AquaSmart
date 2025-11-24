@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite" // cambia a "postgresql" cuando subas a server
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -13,16 +13,14 @@ model User {
   id           String   @id @default(cuid())
   username     String   @unique
   active       Boolean  @default(true)
-  passwordHash String   // <- ahora sí obligatorio
+  passwordHash String
   person       Person?
   pools        Pool[]
-  histories    History[]
-  actions      ActionLog[]
+  historiales  Historial[]
+  acciones     AccionCorrectiva[]
   groups       UserGroup[]
   createdAt    DateTime @default(now())
 }
-
-
 
 model Person {
   id     String @id @default(cuid())
@@ -67,28 +65,33 @@ model GroupPermission {
 // ===== Dominio AquaSmart =====
 
 model Pool {
-  id           String        @id @default(cuid())
-  name         String
-  ownerId      String?
-  owner        User?         @relation(fields: [ownerId], references: [id])
-  createdAt    DateTime      @default(now())
-  measurements Measurement[]
-  threshold    Threshold?
-  alerts       Alert[]
-  actions      ActionLog[]
-  histories    History[]
+  id              String           @id @default(cuid())
+  name            String
+  ownerId         String?
+  owner           User?            @relation(fields: [ownerId], references: [id])
+  createdAt       DateTime         @default(now())
+  sensoresLectura SensorLectura[]
+  threshold       Threshold?
+  alerts          Alert[]
+  acciones        AccionCorrectiva[]
+  historiales     Historial[]
 }
 
-model Measurement {
-  id        String   @id @default(cuid())
-  poolId    String
-  pool      Pool     @relation(fields: [poolId], references: [id])
-  ph        Float
-  freeChlor Float
-  tempC     Float
-  takenAt   DateTime @default(now())
+model SensorLectura {
+  id         String     @id @default(cuid())
+  poolId     String
+  pool       Pool       @relation(fields: [poolId], references: [id])
+  fechaHora  DateTime   @default(now())
+  parametros Parametro[]
+}
 
-  @@index([poolId, takenAt])
+model Parametro {
+  id         String         @id @default(cuid())
+  lecturaId  String
+  lectura    SensorLectura  @relation(fields: [lecturaId], references: [id])
+  tipo       String
+  unidad     String
+  valor      Float
 }
 
 model Threshold {
@@ -104,41 +107,43 @@ model Threshold {
   updatedAt DateTime @updatedAt
 }
 
+model AccionCorrectiva {
+  id              String     @id @default(cuid())
+  alertaId        String   @unique
+  poolId          String
+  descripcion     String
+  tipoAccion      String
+  fechaCorreccion DateTime  @default(now())
+  userId          String?
+
+  alerta          Alert      @relation("AccionPorAlerta", fields: [alertaId], references: [id])
+  pool            Pool       @relation(fields: [poolId], references: [id])
+  historial       Historial[]
+  user            User?      @relation(fields: [userId], references: [id])
+}
+
+
 model Alert {
-  id         String    @id @default(cuid())
-  poolId     String
-  pool       Pool      @relation(fields: [poolId], references: [id])
-  type       String
-  message    String
-  level      String // "warning" | "critical"
-  createdAt  DateTime  @default(now())
-  resolvedAt DateTime?
+  id               String             @id @default(cuid())
+  poolId           String
+  pool             Pool              @relation(fields: [poolId], references: [id])
+  type             String
+  message          String
+  level            String
+  createdAt        DateTime          @default(now())
+  resolvedAt       DateTime?
+  accionCorrectiva AccionCorrectiva? @relation("AccionPorAlerta")
+
 }
 
-// Acciones correctivas
-model ActionLog {
-  id        String    @id @default(cuid())
-  poolId    String
-  pool      Pool      @relation(fields: [poolId], references: [id])
+model Historial {
+  id        String             @id @default(cuid())
+  resumen   String
+  fecha     DateTime           @default(now())
+  accionId  String
+  accion    AccionCorrectiva   @relation(fields: [accionId], references: [id])
+  poolId    String?
+  pool      Pool?              @relation(fields: [poolId], references: [id])
   userId    String?
-  user      User?     @relation(fields: [userId], references: [id])
-  action    String
-  note      String?
-  createdAt DateTime  @default(now())
-  History   History[]
-}
-
-// Historial de eventos
-model History {
-  id       String     @id @default(cuid())
-  poolId   String
-  pool     Pool       @relation(fields: [poolId], references: [id])
-  userId   String?
-  user     User?      @relation(fields: [userId], references: [id])
-  date     DateTime   @default(now())
-  summary  String
-  actionId String?
-  action   ActionLog? @relation(fields: [actionId], references: [id])
-
-  @@index([poolId, date])
+  user      User?              @relation(fields: [userId], references: [id])
 }

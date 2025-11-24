@@ -1,12 +1,8 @@
 const API = import.meta.env.VITE_API_URL;
-console.log("[AUTH] VITE_API_URL =", API);
 
-async function parseJsonOrText(r) {
-  const ct = r.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return r.json();
-  const text = await r.text();
-  // mostramos los primeros 200 chars para debug
-  throw new Error(text.slice(0, 200));
+async function safeJson(res) {
+  try { return await res.json(); }
+  catch { return null; }
 }
 
 export async function signup({ name, email, username, password }) {
@@ -15,11 +11,14 @@ export async function signup({ name, email, username, password }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, email, username, password })
   });
+
+  const data = await safeJson(r);
+
   if (!r.ok) {
-    const err = await parseJsonOrText(r).catch(e => e);
-    throw new Error(err.message || "Error signup");
+    throw new Error(data?.error || "Error al registrarse.");
   }
-  return r.json(); // { token, user }
+
+  return data; // { token, user }
 }
 
 export async function login({ emailOrUsername, password }) {
@@ -28,9 +27,26 @@ export async function login({ emailOrUsername, password }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ emailOrUsername, password })
   });
+
+  const data = await safeJson(r);
+
   if (!r.ok) {
-    const err = await parseJsonOrText(r).catch(e => e);
-    throw new Error(err.message || "Error login");
+    throw new Error(data?.error || "No se pudo iniciar sesión.");
   }
-  return r.json(); // { token, user }
+
+  return data; // { token, user }
+}
+
+export async function me() {
+  const r = await fetch(`${API}/api/auth/me`, {
+    headers: {
+      "Authorization": `Bearer ${getToken()}`
+    }
+  });
+
+  const data = await safeJson(r);
+
+  if (!r.ok) throw new Error(data?.error || "No autorizado");
+
+  return data; // { id, username, name, email }
 }
