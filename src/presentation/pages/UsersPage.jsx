@@ -1,4 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  fetchUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+} from "../../infra/http/users";
+
 
 // ===== Permisos base simulados (pensados como tu clase Permiso) =====
 const INITIAL_PERMISSIONS = [
@@ -91,7 +98,7 @@ const INITIAL_USERS = [
 
 export default function UsersPage() {
   const [activeTab, setActiveTab] = useState("users"); // "users" | "groups"
-  const [users, setUsers] = useState(INITIAL_USERS);
+  const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState(INITIAL_GROUPS);
   const [permissions, setPermissions] = useState(INITIAL_PERMISSIONS);
 
@@ -104,6 +111,18 @@ export default function UsersPage() {
   const [formEmail, setFormEmail] = useState("");
   const [formRole, setFormRole] = useState("OWNER");
   const [formActive, setFormActive] = useState(true);
+    useEffect(() => {
+    (async () => {
+      try {
+        const list = await fetchUsers();
+        setUsers(list);
+      } catch (e) {
+        console.error(e);
+        alert(e.message || "Error cargando usuarios");
+      }
+    })();
+  }, []);
+
 
   // --- Derivados usuarios ---
   const filteredUsers = useMemo(() => {
@@ -144,46 +163,52 @@ export default function UsersPage() {
     setModalOpen(false);
   }
 
-  function handleSaveUser(e) {
-    e.preventDefault();
-    if (!formEmail.trim()) {
-      alert("El email es obligatorio.");
-      return;
+    async function handleSaveUser(e) {
+      e.preventDefault();
+      if (!formEmail.trim()) {
+        alert("El email es obligatorio.");
+        return;
+      }
+
+      try {
+        if (editingUser) {
+          const updated = await updateUser(editingUser.id, {
+            email: formEmail.trim(),
+            role: formRole,
+            active: formActive,
+          });
+          setUsers((prev) =>
+            prev.map((u) => (u.id === updated.id ? updated : u))
+          );
+        } else {
+          const created = await createUser({
+            email: formEmail.trim(),
+            role: formRole,
+            active: formActive,
+          });
+          // lo ponemos al principio de la lista
+          setUsers((prev) => [created, ...prev]);
+        }
+
+        setModalOpen(false);
+      } catch (err) {
+        console.error(err);
+        alert(err.message || "Error guardando usuario");
+      }
     }
 
-    if (editingUser) {
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === editingUser.id
-            ? {
-                ...u,
-                email: formEmail.trim(),
-                role: formRole,
-                active: formActive,
-              }
-            : u
-        )
-      );
-    } else {
-      const nextId = users.length ? Math.max(...users.map((u) => u.id)) + 1 : 1;
-      const nowIso = new Date().toISOString();
-      const newUser = {
-        id: nextId,
-        email: formEmail.trim(),
-        role: formRole,
-        createdAt: nowIso,
-        active: formActive,
-      };
-      setUsers((prev) => [...prev, newUser]);
+
+    async function handleDeleteUser(user) {
+      if (!window.confirm(`¿Eliminar al usuario ${user.email}?`)) return;
+      try {
+        await deleteUser(user.id);
+        setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      } catch (err) {
+        console.error(err);
+        alert(err.message || "Error eliminando usuario");
+      }
     }
 
-    setModalOpen(false);
-  }
-
-  function handleDeleteUser(user) {
-    if (!window.confirm(`¿Eliminar al usuario ${user.email}?`)) return;
-    setUsers((prev) => prev.filter((u) => u.id !== user.id));
-  }
 
   // --- Render ---
   return (
