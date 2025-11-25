@@ -3,6 +3,8 @@ import express from "express";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
 import authRoutes from "./routes/auth.js";
+import poolsRoutes from "./routes/pools.js";
+
 
 const prisma = new PrismaClient();
 const app = express();
@@ -14,6 +16,8 @@ const toHHMM = (d) => new Date(d).toLocaleTimeString([], { hour: "2-digit", minu
 
 // Middleware API Key
 app.use("/api/auth", authRoutes);
+app.use("/api/pools", poolsRoutes);
+
 
 // GET último valor
 app.get("/api/measurements/latest", async (req, res) => {

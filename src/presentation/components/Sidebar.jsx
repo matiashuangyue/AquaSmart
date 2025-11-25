@@ -21,6 +21,7 @@ export default function Sidebar() {
         <button onClick={()=>go("history")} className="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100">Historial</button>
         <button onClick={()=>go("audit")} className="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100">Auditorías</button>
         <button onClick={()=>go("users")} className="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100">Usuarios</button>
+        <button onClick={()=>go("pools")} className="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100">Piletas</button>
         <button onClick={()=>go("config")} className="w-full text-left block px-3 py-2 rounded-lg hover:bg-slate-100">Configuración</button>
       </nav>
     </div>

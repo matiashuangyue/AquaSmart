@@ -65,17 +65,27 @@ model GroupPermission {
 // ===== Dominio AquaSmart =====
 
 model Pool {
-  id              String           @id @default(cuid())
-  name            String
-  ownerId         String?
-  owner           User?            @relation(fields: [ownerId], references: [id])
-  createdAt       DateTime         @default(now())
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String?
+  owner     User?    @relation(fields: [ownerId], references: [id])
+  createdAt DateTime @default(now())
+
+  // ==== Campos físicos según tu UML de Pileta ====
+  volumen             Float?   // m3 aproximados
+  largo               Float?   // metros
+  ancho               Float?   // metros
+  profundidadPromedio Float?   // metros
+  estadoPileta        String?  @default("OK") // ej: OK, En_Mantenimiento, Cerrada
+
+  // ==== Relaciones ya existentes ====
   sensoresLectura SensorLectura[]
   threshold       Threshold?
   alerts          Alert[]
   acciones        AccionCorrectiva[]
   historiales     Historial[]
 }
+
 
 model SensorLectura {
   id         String     @id @default(cuid())
@@ -98,14 +108,23 @@ model Threshold {
   id        String   @id @default(cuid())
   poolId    String   @unique
   pool      Pool     @relation(fields: [poolId], references: [id])
+
   phMin     Float    @default(7.2)
   phMax     Float    @default(7.8)
   chlorMin  Float    @default(0.5)
   chlorMax  Float    @default(1.5)
   tempMin   Float    @default(20)
   tempMax   Float    @default(35)
+
+  // Mejoras
+  estadoUmbral   String?   @default("OK")
+  notas          String?
+  modificadoPor  String?
+  version        Int?      @default(1)
+
   updatedAt DateTime @updatedAt
 }
+
 
 model AccionCorrectiva {
   id              String     @id @default(cuid())
