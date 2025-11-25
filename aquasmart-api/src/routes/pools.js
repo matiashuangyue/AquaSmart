@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { PrismaClient } from "@prisma/client";
 import { requireAuth } from "../middlewares/auth.js";
+import { audit } from "../infra/logger.js";
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -61,6 +62,14 @@ router.post("/", requireAuth, async (req, res) => {
       },
       include: { threshold: true },
     });
+        // Auditoría
+            await audit({
+            userId: req.user.sub,
+            action: "CREAR_PILETA",
+            module: "Piletas",
+            detail: `Creó la pileta "${pool.name}"`,
+            poolId: pool.id,
+            });
 
     res.status(201).json(pool);
   } catch (e) {
@@ -108,6 +117,14 @@ router.put("/:id", requireAuth, async (req, res) => {
             : existing.estadoPileta,
       },
     });
+        // Auditoría
+        await audit({
+        userId: req.user.sub,
+        action: "EDITAR_PILETA",
+        module: "Piletas",
+        detail: `Editó la pileta "${updated.name}" (id=${updated.id})`,
+        poolId: updated.id,
+        });
 
     res.json(updated);
   } catch (e) {

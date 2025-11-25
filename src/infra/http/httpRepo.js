@@ -1,11 +1,21 @@
 import { toDomainThresholds, toApiThresholds } from "./mappers.js";
+import { getToken } from "../../lib/session";
 
 const API = import.meta.env.VITE_API_URL;
 
 const headers = () => {
   const h = { "Content-Type": "application/json" };
+
+  // 👉 TOKEN JWT
+  const token = getToken();
+  if (token) {
+    h["Authorization"] = `Bearer ${token}`;
+  }
+
+  // 👉 API KEY opcional
   const key = import.meta.env.VITE_API_KEY;
   if (key) h["x-api-key"] = key;
+
   return h;
 };
 
@@ -27,8 +37,8 @@ export const HttpThresholdsRepo = {
       headers: headers(),
     });
     if (!r.ok) throw new Error("Thresholds error");
-    const apiTh = await r.json();   // { phMin, phMax, chlorMin, ... }
-    return toDomainThresholds(apiTh); // -> { ph:{min,max}, cl:{...}, t:{...} }
+    const apiTh = await r.json();
+    return toDomainThresholds(apiTh);
   },
   async save(domainTh, poolId = "pool1") {
     const payload = toApiThresholds(domainTh, poolId);
@@ -43,14 +53,12 @@ export const HttpThresholdsRepo = {
   },
 };
 
-// Simulación desde API
 export async function apiSimulate(poolId = "pool1") {
   const r = await fetch(`${API}/api/sim/run-once`, {
     method: "POST",
     headers: headers(),
-    body: JSON.stringify({ poolId }),   // 👈 ESTE poolId
+    body: JSON.stringify({ poolId }),
   });
   if (!r.ok) throw new Error("Simulate error");
   return r.json();
 }
-

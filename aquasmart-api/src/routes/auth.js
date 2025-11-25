@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireAuth } from "../middlewares/auth.js";
+import { audit } from "../infra/logger.js";
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -57,6 +58,15 @@ router.post("/signup", async (req, res) => {
       include: { person: true }
     });
 
+    // Auditoría
+    await audit({
+      userId: user.id,
+      action: "SIGNUP",
+      module: "Auth",
+      detail: `Usuario creado (${username})`
+    });
+
+
     // opcional: pileta por defecto
     await prisma.pool.create({ data: { name: "Piscina Principal", ownerId: user.id } });
 
@@ -92,10 +102,25 @@ router.post("/login", async (req, res) => {
     if (!ok) return res.status(401).json({ error: "Credenciales inválidas" });
 
     const token = sign(user);
-    res.json({
-      token,
-      user: { id: user.id, username: user.username, name: user.person?.name, email: user.person?.email }
-    });
+
+// Auditoría
+await audit({
+  userId: user.id,
+  action: "LOGIN",
+  module: "Auth",
+  detail: "Inicio de sesión"
+});
+
+res.json({
+  token,
+  user: {
+    id: user.id,
+    username: user.username,
+    name: user.person?.name,
+    email: user.person?.email
+  }
+});
+
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Error de servidor" });

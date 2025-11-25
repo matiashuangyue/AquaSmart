@@ -20,6 +20,8 @@ model User {
   acciones     AccionCorrectiva[]
   groups       UserGroup[]
   createdAt    DateTime @default(now())
+  auditLogs    AuditLog[]
+
 }
 
 model Person {
@@ -165,4 +167,18 @@ model Historial {
   pool      Pool?              @relation(fields: [poolId], references: [id])
   userId    String?
   user      User?              @relation(fields: [userId], references: [id])
+}
+
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  action    String
+  module    String
+  detail    String
+
+  poolId    String?  // para acciones sobre piletas (opcional)
+  fechaHora DateTime @default(now())
 }

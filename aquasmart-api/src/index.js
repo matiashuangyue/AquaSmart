@@ -4,9 +4,35 @@ import cors from "cors";
 import { PrismaClient } from "@prisma/client";
 import authRoutes from "./routes/auth.js";
 import poolsRoutes from "./routes/pools.js";
+import auditRoutes from "./routes/audit.js";
+import { requireAuth } from "./middlewares/auth.js";
+import { audit } from "./infra/logger.js";
 
 const prisma = new PrismaClient();
 const app = express();
+// Helper: resolver poolId lógico ("pool1") al real de BD del usuario
+async function resolvePoolId(req, poolIdFromClient) {
+  // Si ya viene uno real distinto de "pool1", lo usamos tal cual
+  if (poolIdFromClient && poolIdFromClient !== "pool1") {
+    return poolIdFromClient;
+  }
+
+  // Si no hay usuario (no pasó por requireAuth), devolvemos lo que haya
+  const userId = req.user?.sub;
+  if (!userId) {
+    return poolIdFromClient || "pool1";
+  }
+
+  // Buscamos la primera pileta del usuario como "principal"
+  const pool = await prisma.pool.findFirst({
+    where: { ownerId: userId },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return pool?.id || poolIdFromClient || "pool1";
+}
+
+
 app.use(cors());
 app.use(express.json());
 
@@ -19,6 +45,9 @@ app.use("/api/auth", authRoutes);
 
 // Rutas de piletas
 app.use("/api/pools", poolsRoutes);
+
+// Rutas de auditoría
+app.use("/api/audit", auditRoutes);
 
 // ===============================
 //   MEDICIONES / SIMULACIÓN
@@ -88,10 +117,13 @@ app.get("/api/measurements/history", async (req, res) => {
   }
 });
 
+
 // POST simular una medición (crea SensorLectura + Parámetros)
-app.post("/api/sim/run-once", async (req, res) => {
+app.post("/api/sim/run-once", requireAuth, async (req, res) => {
   try {
-    const poolId = req.body?.poolId || "pool1";
+    const userId = req.user.sub;
+    const poolIdRaw = req.body?.poolId || "pool1";
+    const poolId = await resolvePoolId(req, poolIdRaw);
 
     const ph = +(6.5 + Math.random() * 2).toFixed(1);
     const cl = +(0.1 + Math.random() * 2).toFixed(1);
@@ -111,8 +143,16 @@ app.post("/api/sim/run-once", async (req, res) => {
       include: { parametros: true },
     });
 
+    await audit({
+      userId,
+      action: "SIMULAR_LECTURA",
+      module: "Sensores",
+      detail: `Lectura simulada en pileta ${poolId}`,
+      poolId,
+    });
+
     res.status(201).json({
-      idx: 0,
+      idx: created.fechaHora.getTime(),          // índice único
       time: created.fechaHora.toISOString(),
       ph,
       cl,
@@ -125,12 +165,15 @@ app.post("/api/sim/run-once", async (req, res) => {
 });
 
 
+
 // ===============================
 //   UMBRALES
 // ===============================
-app.get("/api/thresholds", async (req, res) => {
+app.get("/api/thresholds", requireAuth, async (req, res) => {
   try {
-    const poolId = req.query.poolId || "pool1";
+    const poolIdRaw = req.query.poolId || "pool1";
+    const poolId = await resolvePoolId(req, poolIdRaw);
+
     const th = await prisma.threshold.findUnique({ where: { poolId } });
     res.json(th);
   } catch (e) {
@@ -139,23 +182,42 @@ app.get("/api/thresholds", async (req, res) => {
   }
 });
 
-app.put("/api/thresholds", async (req, res) => {
+
+
+// PUT actualizar umbrales
+app.put("/api/thresholds", requireAuth, async (req, res) => {
   try {
-    const { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax } =
-      req.body;
-    if (!poolId) return res.status(400).json({ error: "poolId requerido" });
+    const userId = req.user.sub;
+    const { poolId: poolIdRaw, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax } = req.body;
+
+    const poolId = await resolvePoolId(req, poolIdRaw);
+
+    if (!poolId) {
+      return res.status(400).json({ error: "poolId requerido" });
+    }
 
     const up = await prisma.threshold.upsert({
       where: { poolId },
       update: { phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
       create: { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
     });
+
+    await audit({
+      userId,
+      action: "EDITAR_UMBRAL",
+      module: "Umbrales",
+      detail: `Actualizó umbrales de la pileta ${poolId}`,
+      poolId,
+    });
+
     res.json(up);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Error guardando umbrales" });
   }
 });
+
+
 
 // ===============================
 

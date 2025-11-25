@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import html2canvas from "html2canvas";
+import { getToken } from "../../lib/session";
 
 export default function AuditPage() {
   const [logs, setLogs] = useState([]);
@@ -11,29 +12,37 @@ export default function AuditPage() {
   const [type, setType] = useState("ALL");
 
   useEffect(() => {
-    // TEMPORAL: simulado (después lo conectamos al API)
-    const fakeLogs = [
-      {
-        id: 1,
-        usuario: "yue.huang",
-        accion: "LOGIN",
-        modulo: "Auth",
-        detalle: "Inicio de sesión",
-        fechaHora: "2025-11-18T08:55:00.000Z",
-      },
-      {
-        id: 2,
-        usuario: "juan.perez",
-        accion: "CREAR_PILETA",
-        modulo: "Piletas",
-        detalle: "Creó Pileta ID:12",
-        fechaHora: "2025-11-18T09:00:00.000Z",
-      },
-    ];
+  (async () => {
+    try {
+      setLoading(true);
 
-    setLogs(fakeLogs);
-    setLoading(false);
-  }, []);
+      const API = import.meta.env.VITE_API_URL;
+      const token = getToken();
+
+      const r = await fetch(`${API}/api/audit`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+      });
+
+      if (!r.ok) {
+        console.error("Error al cargar auditoría:", await r.text());
+        setLogs([]);
+        return;
+      }
+
+      const data = await r.json();
+      setLogs(data || []);
+    } catch (e) {
+      console.error(e);
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  })();
+}, []);
+
 
   const filtered = useMemo(() => {
     let arr = [...logs];
