@@ -72,12 +72,14 @@ app.get("/api/measurements/history", async (req, res) => {
 
       return {
         idx: i,
-        time: toHHMM(l.fechaHora),
+        // 👉 Enviamos fecha/hora completa en ISO
+        time: l.fechaHora.toISOString(),
         ph: getVal("ph"),
         cl: getVal("cloro"),
         t: getVal("temperatura"),
       };
     });
+
 
     res.json(data);
   } catch (e) {
@@ -111,7 +113,7 @@ app.post("/api/sim/run-once", async (req, res) => {
 
     res.status(201).json({
       idx: 0,
-      time: toHHMM(created.fechaHora),
+      time: created.fechaHora.toISOString(),
       ph,
       cl,
       t,
@@ -121,6 +123,7 @@ app.post("/api/sim/run-once", async (req, res) => {
     res.status(500).json({ error: "Error simulando medición" });
   }
 });
+
 
 // ===============================
 //   UMBRALES

@@ -11,17 +11,24 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { listMyPools } from "../../infra/http/pools";
 
 export default function HistoryPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // piletas
+  const [pools, setPools] = useState([]);
+  const [activePoolId, setActivePoolId] = useState(null);
+  const [loadingPools, setLoadingPools] = useState(false);
+  const [errPools, setErrPools] = useState("");
 
   // filtros editables
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [alertType, setAlertType] = useState("ALL"); // ALL | OK | WARN | CRIT
 
-  // filtros aplicados (se actualizan solo cuando apretás el botón)
+  // filtros aplicados
   const [appliedDateFrom, setAppliedDateFrom] = useState("");
   const [appliedDateTo, setAppliedDateTo] = useState("");
   const [appliedAlertType, setAppliedAlertType] = useState("ALL");
@@ -29,19 +36,44 @@ export default function HistoryPage() {
   // ref para exportar el gráfico
   const chartRef = useRef(null);
 
+  // cargar piletas del usuario
   useEffect(() => {
     (async () => {
       try {
-        const h = await usecases.getHistory("pool1");
-        setRows(h || []);
-        if (h && h.length > 0) {
-          console.log("Ejemplo r:", h[0], "time raw:", h[0].time);
+        setLoadingPools(true);
+        setErrPools("");
+        const list = await listMyPools();
+        setPools(list);
+        if (!activePoolId && list.length > 0) {
+          setActivePoolId(list[0].id);
         }
+      } catch (e) {
+        console.error(e);
+        setErrPools(e.message || "No se pudieron cargar las piletas.");
+      } finally {
+        setLoadingPools(false);
+      }
+    })();
+  }, []);
+
+  // cargar historial cuando cambie la pileta
+  useEffect(() => {
+    if (!activePoolId) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        setLoading(true);
+        const h = await usecases.getHistory(activePoolId);
+        setRows(h || []);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [activePoolId]);
 
   const applyFilters = () => {
     setAppliedDateFrom(dateFrom);
@@ -61,7 +93,6 @@ export default function HistoryPage() {
     return ordered.filter((r) => {
       const d = parseDateOnly(r.time); // solo fecha (sin hora)
 
-      // si no puedo parsear la fecha, no lo filtro por rango, solo por estado
       if (d && from && d < from) return false;
       if (d && to) {
         const toEnd = new Date(to);
@@ -97,7 +128,7 @@ export default function HistoryPage() {
 
     const canvas = await html2canvas(chartRef.current, {
       backgroundColor: "#ffffff",
-      scale: 2, // más resolución
+      scale: 2,
     });
 
     const dataUrl = canvas.toDataURL("image/png");
@@ -107,11 +138,52 @@ export default function HistoryPage() {
     link.click();
   };
 
-  if (loading) return <div className="p-4">Cargando…</div>;
+  const currentPool = pools.find((p) => p.id === activePoolId) || null;
+  const currentPoolName = currentPool?.name || "";
+
+  if (loading && !rows.length) return <div className="p-4">Cargando…</div>;
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-800">Historial</h1>
+
+      {/* INFO PILETA SELECCIONADA */}
+      <div className="bg-white border rounded-2xl shadow-sm p-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between text-xs">
+        <div>
+          <span className="text-slate-500">Pileta seleccionada: </span>
+          {currentPool ? (
+            <span className="font-medium text-slate-800">
+              {currentPool.name}{" "}
+              {currentPool.estadoPileta ? `(${currentPool.estadoPileta})` : ""}
+            </span>
+          ) : loadingPools ? (
+            <span className="text-slate-500">Cargando piletas…</span>
+          ) : (
+            <span className="text-slate-500">
+              No hay piletas. Creá una desde el menú “Piletas”.
+            </span>
+          )}
+          {errPools && (
+            <div className="text-rose-600 mt-1">{errPools}</div>
+          )}
+        </div>
+        {pools.length > 0 && (
+          <div className="flex items-center gap-2 mt-1 md:mt-0">
+            <span className="text-slate-500">Cambiar pileta:</span>
+            <select
+              className="border rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              value={activePoolId || ""}
+              onChange={(e) => setActivePoolId(e.target.value || null)}
+            >
+              {pools.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
 
       {/* FILTROS + APLICAR + EXPORTAR */}
       <div className="bg-white border rounded-2xl shadow-sm p-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -163,8 +235,9 @@ export default function HistoryPage() {
 
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => exportCsv(filteredRows)}
+            onClick={() => exportCsv(filteredRows, currentPoolName)}
             className="self-start md:self-auto inline-flex items-center gap-1 rounded-full bg-slate-800 text-white text-xs font-medium px-3 py-2 hover:bg-slate-900"
+            disabled={!filteredRows.length}
           >
             Exportar informe (CSV)
           </button>
@@ -181,7 +254,7 @@ export default function HistoryPage() {
       {/* CHART */}
       <div
         className="bg-white border rounded-2xl shadow-sm p-4 h-72"
-        style={{ minWidth: 0 }} // arregla warning de Recharts
+        style={{ minWidth: 0 }}
       >
         <h2 className="text-sm font-semibold text-slate-700 mb-2">
           Evolución de parámetros
@@ -229,6 +302,7 @@ export default function HistoryPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
+              <Th>Pileta</Th>
               <Th>Fecha</Th>
               <Th>Hora</Th>
               <Th>pH</Th>
@@ -242,6 +316,7 @@ export default function HistoryPage() {
               const st = statusOf(r);
               return (
                 <tr key={i} className="border-t">
+                  <Td>{currentPoolName || "-"}</Td>
                   <Td>{formatDate(r.time)}</Td>
                   <Td>{formatTimeOnly(r.time)}</Td>
                   <Td>{r.ph}</Td>
@@ -263,7 +338,7 @@ export default function HistoryPage() {
             {filteredRows.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="py-6 text-center text-slate-500 text-sm"
                 >
                   Sin lecturas para los filtros seleccionados.
@@ -279,33 +354,26 @@ export default function HistoryPage() {
 
 /** --- Helpers de fecha/hora --- */
 
-// Intenta parsear fecha y hora desde r.time
 function parseTime(time) {
   const d = tryParseDateTime(time);
   return d ? d.getTime() : 0;
 }
 
-// Devuelve solo la fecha (00:00) para filtros
 function parseDateOnly(time) {
   const d = tryParseDateTime(time);
   if (!d) return null;
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-// Parser genérico: intenta ISO, y si no, dd/MM/yyyy HH:mm:ss o dd/MM/yyyy HH:mm
 function tryParseDateTime(time) {
   if (!time) return null;
-
-  // Normalizar: quitar espacios, comillas, caracteres raros
   const clean = String(time).trim().replace(/(^"|"$)/g, "");
 
-  // 1) Intentar ISO estrictamente
-  const iso = Date.parse(clean); // Date.parse soporta ISO perfecto
+  const iso = Date.parse(clean);
   if (!Number.isNaN(iso)) {
     return new Date(iso);
   }
 
-  // 2) Intento dd/MM/yyyy HH:mm(:ss)?
   const match =
     /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(
       clean
@@ -403,11 +471,10 @@ function Td({ children }) {
 
 /** --- Export CSV --- */
 
-function exportCsv(rows) {
+function exportCsv(rows, poolName = "") {
   if (!rows || rows.length === 0) return;
 
-  // Encabezados sin acentos ni caracteres raros
-  const header = ["Fecha", "Hora", "pH", "Cloro_ppm", "Temp_C", "Estado"];
+  const header = ["Pileta", "Fecha", "Hora", "pH", "Cloro_ppm", "Temp_C", "Estado"];
   const lines = [header.join(";")];
 
   rows.forEach((r) => {
@@ -425,13 +492,13 @@ function exportCsv(rows) {
 
       const h = String(d.getHours()).padStart(2, "0");
       const min = String(d.getMinutes()).padStart(2, "0");
-      hora = `${h}:${min}`; // 24h
+      hora = `${h}:${min}`;
     }
 
     let estado = st.label;
     if (estado === "Crítica") estado = "Critica";
 
-    lines.push([fecha, hora, r.ph, r.cl, r.t, estado].join(";"));
+    lines.push([poolName, fecha, hora, r.ph, r.cl, r.t, estado].join(";"));
   });
 
   const blob = new Blob([lines.join("\n")], {

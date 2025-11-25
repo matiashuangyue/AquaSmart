@@ -48,8 +48,9 @@ export async function apiSimulate(poolId = "pool1") {
   const r = await fetch(`${API}/api/sim/run-once`, {
     method: "POST",
     headers: headers(),
-    body: JSON.stringify({ poolId }),
+    body: JSON.stringify({ poolId }),   // 👈 ESTE poolId
   });
   if (!r.ok) throw new Error("Simulate error");
-  return r.json(); // {idx,time,ph,cl,t}
+  return r.json();
 }
+
