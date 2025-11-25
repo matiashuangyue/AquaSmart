@@ -63,7 +63,8 @@ router.post("/signup", async (req, res) => {
       userId: user.id,
       action: "SIGNUP",
       module: "Auth",
-      detail: `Usuario creado (${username})`
+      detail: `Usuario creado (${username})`,
+      poolId: null,
     });
 
 
@@ -108,7 +109,8 @@ await audit({
   userId: user.id,
   action: "LOGIN",
   module: "Auth",
-  detail: "Inicio de sesión"
+  detail: "Inicio de sesión",
+  poolId: null,
 });
 
 res.json({
@@ -126,5 +128,28 @@ res.json({
     res.status(500).json({ error: "Error de servidor" });
   }
 });
+
+// POST /api/auth/logout
+router.post("/logout", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.sub;
+
+    await audit({
+      userId,
+      action: "LOGOUT",
+      module: "Auth",
+      detail: "Cierre de sesión",
+      poolId: null,
+    });
+
+    // Como usamos JWT, no hay "invalidate" real del token.
+    // Solo registramos la acción y devolvemos OK.
+    res.status(204).end();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Error registrando logout" });
+  }
+});
+
 
 export default router;

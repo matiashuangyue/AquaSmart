@@ -6,13 +6,15 @@ import { requireAuth } from "../middlewares/auth.js";
 const prisma = new PrismaClient();
 const router = Router();
 
-// GET /api/audit
 router.get("/", requireAuth, async (req, res) => {
   try {
     const logs = await prisma.auditLog.findMany({
       orderBy: { fechaHora: "desc" },
-      include: { user: true },
-      take: 500, // límite razonable
+      include: {
+        user: true,
+        pool: true,   // 👈 ahora también traemos el nombre de la pileta
+      },
+      take: 500,
     });
 
     const data = logs.map((l) => ({
@@ -22,6 +24,10 @@ router.get("/", requireAuth, async (req, res) => {
       modulo: l.module,
       detalle: l.detail,
       fechaHora: l.fechaHora,
+
+      // 👇 NUEVO
+      piletaNombre: l.pool?.name || "(sin pileta)",
+      poolId: l.poolId,
     }));
 
     res.json(data);
@@ -32,4 +38,3 @@ router.get("/", requireAuth, async (req, res) => {
 });
 
 export default router;
-

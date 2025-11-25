@@ -16,6 +16,27 @@ export default function App() {
   const [view, setView] = useState(getToken() ? "dash" : "login");
   const [thVersion, setThVersion] = useState(0);
 
+  // función nueva
+  async function handleLogout() {
+    const token = getToken();
+    if (token) {
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL}/api/auth/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`, // 🔥 token enviado → auditoría ok
+          },
+        });
+      } catch (err) {
+        console.error("Error llamando /logout", err);
+      }
+    }
+
+    clearToken();
+    setView("login");
+  }
+
   useEffect(() => {
     function onNav(e) {
       setView(e.detail);
@@ -47,12 +68,7 @@ export default function App() {
 
   // === VISTAS CON SESIÓN ===
   return (
-    <AppLayout
-      onLogout={() => {
-        clearToken();
-        setView("login");
-      }}
-    >
+    <AppLayout onLogout={handleLogout}>   {/* 👈 ahora usamos handleLogout */}
       {view === "dash" && <Dashboard thVersion={thVersion} />}
       {view === "config" && (
         <ThresholdsPage
@@ -66,12 +82,11 @@ export default function App() {
       {view === "audit" && <AuditPage />}
       {view === "users" && <UsersPage />}
       {view === "pools" && (
-      <PoolsPage
-        onCreated={() => {
-          // por ahora solo volvemos al dash o podés dejarlo quieto
-          // setView("dash");
-        }}
-      />
+        <PoolsPage
+          onCreated={() => {
+            /* nada aún */
+          }}
+        />
       )}
     </AppLayout>
   );

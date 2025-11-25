@@ -143,13 +143,21 @@ app.post("/api/sim/run-once", requireAuth, async (req, res) => {
       include: { parametros: true },
     });
 
-    await audit({
-      userId,
-      action: "SIMULAR_LECTURA",
-      module: "Sensores",
-      detail: `Lectura simulada en pileta ${poolId}`,
-      poolId,
-    });
+    // buscamos la pileta para mostrar el nombre en el detalle
+const pool = await prisma.pool.findUnique({
+  where: { id: poolId },
+});
+
+await audit({
+  userId,
+  action: "SIMULAR_LECTURA",
+  module: "Sensores",
+  detail: pool
+    ? `Lectura simulada en pileta ${pool.name}`
+    : `Lectura simulada en una pileta`,
+  poolId,
+});
+
 
     res.status(201).json({
       idx: created.fechaHora.getTime(),          // índice único
@@ -188,9 +196,8 @@ app.get("/api/thresholds", requireAuth, async (req, res) => {
 app.put("/api/thresholds", requireAuth, async (req, res) => {
   try {
     const userId = req.user.sub;
-    const { poolId: poolIdRaw, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax } = req.body;
-
-    const poolId = await resolvePoolId(req, poolIdRaw);
+    const { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax } =
+      req.body;
 
     if (!poolId) {
       return res.status(400).json({ error: "poolId requerido" });
@@ -202,11 +209,16 @@ app.put("/api/thresholds", requireAuth, async (req, res) => {
       create: { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
     });
 
+    // buscar nombre de pileta
+    const pool = await prisma.pool.findUnique({ where: { id: poolId } });
+
     await audit({
       userId,
       action: "EDITAR_UMBRAL",
       module: "Umbrales",
-      detail: `Actualizó umbrales de la pileta ${poolId}`,
+      detail: pool
+        ? `Actualizó umbrales de la pileta "${pool.name}"`
+        : `Actualizó umbrales de una pileta`,
       poolId,
     });
 
@@ -216,6 +228,7 @@ app.put("/api/thresholds", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Error guardando umbrales" });
   }
 });
+
 
 
 

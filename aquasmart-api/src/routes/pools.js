@@ -118,12 +118,12 @@ router.put("/:id", requireAuth, async (req, res) => {
       },
     });
         // Auditoría
-        await audit({
-        userId: req.user.sub,
-        action: "EDITAR_PILETA",
-        module: "Piletas",
-        detail: `Editó la pileta "${updated.name}" (id=${updated.id})`,
-        poolId: updated.id,
+       await audit({
+            userId,
+            action: "EDITAR_PILETA",
+            module: "Piletas",
+            detail: `Editó la pileta "${updated.name}"`,
+            poolId: updated.id,
         });
 
     res.json(updated);

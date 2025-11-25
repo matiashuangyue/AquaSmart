@@ -152,6 +152,7 @@ export default function AuditPage() {
               <th className="px-3 py-2 text-left">Acción</th>
               <th className="px-3 py-2 text-left">Módulo</th>
               <th className="px-3 py-2 text-left">Detalle</th>
+              <th className="px-3 py-2 text-left">Pileta</th>
             </tr>
           </thead>
 
@@ -172,6 +173,7 @@ export default function AuditPage() {
                   <td className="px-3 py-2">{l.accion}</td>
                   <td className="px-3 py-2">{l.modulo}</td>
                   <td className="px-3 py-2">{l.detalle}</td>
+                  <td className="px-3 py-2">{l.piletaNombre}</td>
                 </tr>
               );
             })}
