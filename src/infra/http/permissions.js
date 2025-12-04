@@ -14,17 +14,17 @@ export async function fetchPermissions() {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Error cargando permisos");
-  return res.json(); // [{id, code}]
+  return res.json(); // [{id, code, desc}]
 }
 
-export async function createPermission(code) {
+export async function createPermission(code, desc) {
   const res = await fetch(`${API}/api/permissions`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, desc }),
   });
   if (!res.ok) throw new Error("Error creando permiso");
-  return res.json(); // {id, code}
+  return res.json(); // {id, code, desc}
 }
 
 export async function addPermissionToGroup(groupId, code) {

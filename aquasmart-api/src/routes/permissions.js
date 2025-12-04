@@ -15,11 +15,11 @@ router.get("/", requireAuth, async (req, res) => {
       orderBy: { code: "asc" },
     });
 
-    // devolvemos solo lo necesario
     res.json(
       perms.map((p) => ({
         id: p.id,
         code: p.code,
+        desc: p.desc || null,
       }))
     );
   } catch (err) {
@@ -30,12 +30,12 @@ router.get("/", requireAuth, async (req, res) => {
 
 /**
  * POST /api/permissions
- * Crea un nuevo permiso a partir de un code
- * body: { code: "VIEW_DASHBOARD" }
+ * Crea un nuevo permiso
+ * body: { code: "VIEW_REPORTS", desc?: "Ver reportes..." }
  */
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { code } = req.body;
+    const { code, desc } = req.body;
     if (!code || !code.trim()) {
       return res.status(400).json({ error: "code requerido" });
     }
@@ -52,12 +52,16 @@ router.post("/", requireAuth, async (req, res) => {
     }
 
     const perm = await prisma.permission.create({
-      data: { code: normalized },
+      data: {
+        code: normalized,
+        desc: desc?.trim() || null,
+      },
     });
 
     res.status(201).json({
       id: perm.id,
       code: perm.code,
+      desc: perm.desc,
     });
   } catch (err) {
     console.error(err);

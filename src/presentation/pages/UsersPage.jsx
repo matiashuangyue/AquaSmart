@@ -13,6 +13,20 @@ import {
   removePermissionFromGroup,
 } from "../../infra/http/permissions";
 
+// Descripciones por defecto para los permisos conocidos
+const PERMISSION_DESCRIPTIONS = {
+  MANAGE_POOLS: "Crear y administrar piletas.",
+  MANAGE_THRESHOLDS:
+    "Configurar umbrales de pH, cloro y temperatura de las piletas.",
+  MANAGE_USERS: "Gestionar usuarios y sus roles/grupos.",
+  SIMULATE_SENSOR:
+    "Simular lecturas de sensores para pruebas del sistema.",
+  VIEW_AUDIT: "Ver el registro de auditorías y acciones de usuarios.",
+  VIEW_DASHBOARD: "Acceder al panel principal con métricas en tiempo real.",
+  VIEW_HISTORY:
+    "Ver el historial de lecturas de sensores de las piletas.",
+};
+
 export default function UsersPage() {
   const [activeTab, setActiveTab] = useState("users"); // "users" | "groups"
   const [users, setUsers] = useState([]);
@@ -52,12 +66,15 @@ export default function UsersPage() {
           }))
         );
 
-        // adaptamos permisos para UI: usamos code como id y label
+        // permisos reales
         setPermissions(
           perms.map((p) => ({
             id: p.code, // lo usamos como code
             nombre: p.code,
-            descripcion: "",
+            descripcion:
+              p.desc ||
+              PERMISSION_DESCRIPTIONS[p.code] ||
+              "",
           }))
         );
       } catch (e) {
@@ -432,31 +449,47 @@ function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
     groups.length ? groups[0].id : ""
   );
 
+  const [permModalOpen, setPermModalOpen] = useState(false);
+  const [permCode, setPermCode] = useState("");
+  const [permDesc, setPermDesc] = useState("");
+
   const selectedGroup =
     groups.find((g) => g.id === selectedGroupId) || null;
 
-  // crear un permiso nuevo en backend
-  async function handleCreatePermission() {
-    const nombre = prompt(
-      'Código/tag técnico del permiso (ej: "VIEW_REPORTS").'
-    );
-    if (!nombre) return;
+  function openPermissionModal() {
+    setPermCode("");
+    setPermDesc("");
+    setPermModalOpen(true);
+  }
 
-    const code = nombre.trim().toUpperCase().replace(/\s+/g, "_");
+  function closePermissionModal() {
+    setPermModalOpen(false);
+  }
+
+  // crear un permiso nuevo en backend desde el modal
+  async function handleSavePermission(e) {
+    e.preventDefault();
+    if (!permCode.trim()) {
+      alert("El código del permiso es obligatorio.");
+      return;
+    }
+
+    const rawCode = permCode.trim();
 
     try {
-      const perm = await createPermission(code);
+      const perm = await createPermission(rawCode, permDesc);
 
       const nuevo = {
         id: perm.code,
         nombre: perm.code,
-        descripcion: "",
+        descripcion:
+          perm.desc ||
+          PERMISSION_DESCRIPTIONS[perm.code] ||
+          "",
       };
 
       setPermissions((prev) => [...prev, nuevo]);
-      alert(
-        `Permiso creado: ${perm.code}. Ahora podés asignarlo a los grupos.`
-      );
+      setPermModalOpen(false);
     } catch (err) {
       console.error(err);
       alert(err.message || "Error creando permiso");
@@ -491,8 +524,7 @@ function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
     } catch (err) {
       console.error(err);
       alert(
-        err.message ||
-          "Error actualizando permisos del grupo"
+        err.message || "Error actualizando permisos del grupo"
       );
     }
   }
@@ -517,7 +549,7 @@ function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
         </div>
 
         <button
-          onClick={handleCreatePermission}
+          onClick={openPermissionModal}
           className="px-3 py-2 text-xs rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
         >
           + Crear nuevo permiso
@@ -588,6 +620,17 @@ function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
             VIEW_AUDIT) para controlar el acceso a cada sección.
           </p>
         </div>
+      )}
+
+      {permModalOpen && (
+        <PermissionModal
+          onClose={closePermissionModal}
+          onSubmit={handleSavePermission}
+          code={permCode}
+          setCode={setPermCode}
+          desc={permDesc}
+          setDesc={setPermDesc}
+        />
       )}
     </div>
   );
@@ -674,6 +717,67 @@ function UserModal({
               className="px-3 py-1.5 rounded-full text-xs bg-indigo-600 text-white font-medium hover:bg-indigo-700"
             >
               {editing ? "Guardar cambios" : "Crear usuario"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ===== Modal permiso =====
+
+function PermissionModal({ onClose, onSubmit, code, setCode, desc, setDesc }) {
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4">
+        <h2 className="text-lg font-semibold text-slate-800 mb-3">
+          Nuevo permiso
+        </h2>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">
+              Código / tag técnico
+            </label>
+            <input
+              type="text"
+              className="border rounded-lg px-2 py-1 w-full text-sm"
+              placeholder='Ej: "VIEW_REPORTS"'
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Se normaliza a MAYÚSCULAS y guiones bajos. Ej:{" "}
+              <code>VIEW_REPORTS</code>, <code>MANAGE_USERS</code>.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">
+              Descripción
+            </label>
+            <textarea
+              className="border rounded-lg px-2 py-1 w-full text-sm min-h-[70px]"
+              placeholder="Ej: Ver reportes de rendimiento de las piletas."
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-full text-xs border border-slate-300 text-slate-600 hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-3 py-1.5 rounded-full text-xs bg-indigo-600 text-white font-medium hover:bg-indigo-700"
+            >
+              Crear permiso
             </button>
           </div>
         </form>

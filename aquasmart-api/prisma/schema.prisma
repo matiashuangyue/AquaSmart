@@ -43,8 +43,10 @@ model Group {
 model Permission {
   id     String            @id @default(cuid())
   code   String            @unique
+  desc   String?
   groups GroupPermission[]
 }
+
 
 model UserGroup {
   userId  String
