@@ -1,111 +1,66 @@
 // src/routes/users.js
 import { Router } from "express";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import { requireAuth } from "../middlewares/auth.js";
 import { audit } from "../infra/logger.js";
 
 const prisma = new PrismaClient();
 const router = Router();
 
-// Helper: mapear User -> DTO para el front
-function toUserDto(u) {
-  const firstGroup = u.groups?.[0]?.group?.name || "OWNER";
-  return {
-    id: u.id,
-    email: u.person?.email || "",
-    role: firstGroup,          // ADMIN | TECNICO | OWNER
-    active: u.active,
-    createdAt: u.createdAt,
-  };
-}
-
-// helper para obtener (o crear) un Group por nombre
-async function ensureGroupByName(name) {
-  let g = await prisma.group.findUnique({ where: { name } });
-  if (!g) {
-    g = await prisma.group.create({
-      data: { name, desc: `Grupo ${name}` },
-    });
-  }
-  return g;
-}
-
-// GET /api/users  → lista de usuarios
+// GET /api/users
 router.get("/", requireAuth, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
-      orderBy: { createdAt: "desc" },
       include: {
         person: true,
-        groups: {
-          include: { group: true },
-        },
+        groups: { include: { group: true } },
       },
+      orderBy: { createdAt: "desc" },
     });
 
-    res.json(users.map(toUserDto));
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Error obteniendo usuarios" });
+    const data = users.map((u) => {
+      const firstGroup = u.groups[0]?.group;
+      return {
+        id: u.id,
+        email: u.person?.email || "",
+        groupId: firstGroup?.id || null,
+        groupName: firstGroup?.name || null, // 👈 acá va "Administrador"
+        active: u.active,
+        createdAt: u.createdAt,
+      };
+    });
+
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error cargando usuarios" });
   }
 });
 
-// POST /api/users → crear usuario desde gestión
+// POST /api/users
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { email, role = "OWNER", active = true } = req.body;
+    const { email, groupId, active } = req.body;
 
-    if (!email || !email.trim()) {
-      return res.status(400).json({ error: "Email obligatorio" });
-    }
+    if (!email) return res.status(400).json({ error: "Email requerido" });
+    if (!groupId) return res.status(400).json({ error: "groupId requerido" });
 
-    const cleanEmail = email.trim().toLowerCase();
-
-    // username básico a partir del email
-    let baseUsername = cleanEmail.split("@")[0];
-    let username = baseUsername;
-    let exists = await prisma.user.findUnique({ where: { username } });
-
-    if (exists) {
-      username = `${baseUsername}_${Date.now().toString(36).slice(-4)}`;
-    }
-
-    const passwordHash = await bcrypt.hash("Cambiar123!", 10); // contraseña por defecto
+    const exists = await prisma.person.findUnique({ where: { email } });
+    if (exists) return res.status(409).json({ error: "Email ya registrado" });
 
     const user = await prisma.user.create({
       data: {
-        username,
+        username: email.split("@")[0],
+        passwordHash: "temp_hash",
         active,
-        passwordHash,
-        person: {
-          create: {
-            name: baseUsername,
-            email: cleanEmail,
-          },
-        },
-      },
-      include: {
-        person: true,
-        groups: { include: { group: true } },
+        person: { create: { name: email, email } },
       },
     });
 
-    // Asignar grupo/rol
-    const group = await ensureGroupByName(role);
     await prisma.userGroup.create({
       data: {
         userId: user.id,
-        groupId: group.id,
-      },
-    });
-
-    // Recargar user con grupos
-    const fullUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      include: {
-        person: true,
-        groups: { include: { group: true } },
+        groupId, // 👈 grupo real (ej id de "Administrador")
       },
     });
 
@@ -113,106 +68,89 @@ router.post("/", requireAuth, async (req, res) => {
       userId: req.user.sub,
       action: "CREAR_USUARIO",
       module: "Usuarios",
-      detail: `Creó usuario ${cleanEmail} con rol ${role}`,
+      detail: `Creó usuario ${email}`,
     });
 
-    res.status(201).json(toUserDto(fullUser));
-  } catch (e) {
-    console.error(e);
-    if (e.code === "P2002") {
-      return res.status(409).json({ error: "Email ya registrado" });
-    }
+    res.status(201).json({
+      id: user.id,
+      email,
+      groupId,
+      groupName: null, // si querés, podrías recargar el grupo para devolver name
+      active,
+      createdAt: user.createdAt,
+    });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Error creando usuario" });
   }
 });
 
-// PUT /api/users/:id → actualizar email/rol/activo
+// PUT /api/users/:id
 router.put("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { email, role, active } = req.body;
+    const { email, groupId, active } = req.body;
 
     const user = await prisma.user.findUnique({
       where: { id },
-      include: { person: true, groups: { include: { group: true } } },
+      include: { person: true },
+    });
+    if (!user) return res.status(404).json({ error: "No existe el usuario" });
+
+    if (email) {
+      await prisma.person.update({
+        where: { userId: id },
+        data: { email, name: email },
+      });
+    }
+
+    await prisma.user.update({
+      where: { id },
+      data: { active },
     });
 
-    if (!user) {
-      return res.status(404).json({ error: "Usuario no encontrado" });
-    }
-
-    // actualizar email/persona
-    if (email && email.trim()) {
-      await prisma.person.update({
-        where: { id: user.person.id },
-        data: { email: email.trim().toLowerCase() },
-      });
-    }
-
-    // actualizar activo
-    if (typeof active === "boolean") {
-      await prisma.user.update({
-        where: { id },
-        data: { active },
-      });
-    }
-
-    // actualizar rol/grupo
-    if (role) {
-      const group = await ensureGroupByName(role);
-      // borro asociaciones previas y pongo la nueva
+    if (groupId) {
       await prisma.userGroup.deleteMany({ where: { userId: id } });
       await prisma.userGroup.create({
-        data: {
-          userId: id,
-          groupId: group.id,
-        },
+        data: { userId: id, groupId },
       });
     }
-
-    const fullUser = await prisma.user.findUnique({
-      where: { id },
-      include: { person: true, groups: { include: { group: true } } },
-    });
 
     await audit({
       userId: req.user.sub,
       action: "EDITAR_USUARIO",
       module: "Usuarios",
-      detail: `Editó usuario ${fullUser.person?.email}`,
+      detail: `Editó usuario ${email || id}`,
     });
 
-    res.json(toUserDto(fullUser));
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Error actualizando usuario" });
+    res.json({ id, email: email ?? user.person?.email, groupId, active });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error editando usuario" });
   }
 });
 
-// DELETE /api/users/:id → marcamos como inactivo
+// DELETE /api/users/:id
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await prisma.user.update({
-      where: { id },
-      data: { active: false },
-      include: { person: true },
-    });
+    await prisma.userGroup.deleteMany({ where: { userId: id } });
+    await prisma.person.deleteMany({ where: { userId: id } });
+    await prisma.user.delete({ where: { id } });
 
     await audit({
       userId: req.user.sub,
       action: "ELIMINAR_USUARIO",
       module: "Usuarios",
-      detail: `Marcó como inactivo al usuario ${user.person?.email}`,
+      detail: `Eliminó usuario ${id}`,
     });
 
-    res.status(204).end();
-  } catch (e) {
-    console.error(e);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Error eliminando usuario" });
   }
 });
 
 export default router;
-

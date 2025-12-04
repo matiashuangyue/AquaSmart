@@ -12,20 +12,52 @@ import AuditPage from "./presentation/pages/AuditPage";
 import UsersPage from "./presentation/pages/UsersPage";
 import PoolsPage from "./presentation/pages/PoolsPage";
 
+const API = import.meta.env.VITE_API_URL;
+
 export default function App() {
   const [view, setView] = useState(getToken() ? "dash" : "login");
   const [thVersion, setThVersion] = useState(0);
+  const [currentUser, setCurrentUser] = useState(null);
 
-  // función nueva
+  // 🔐 Cargar usuario + permisos
+  useEffect(() => {
+    async function loadMe() {
+      const token = getToken();
+      if (!token) return;
+
+      try {
+        const r = await fetch(`${API}/api/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!r.ok) {
+          clearToken();
+          setCurrentUser(null);
+          setView("login");
+          return;
+        }
+        const u = await r.json();
+        setCurrentUser(u);
+      } catch (err) {
+        console.error("Error cargando /me", err);
+      }
+    }
+
+    loadMe();
+  }, []);
+
+  const permissions = currentUser?.permissions || [];
+
   async function handleLogout() {
     const token = getToken();
     if (token) {
       try {
-        await fetch(`${import.meta.env.VITE_API_URL}/api/auth/logout`, {
+        await fetch(`${API}/api/auth/logout`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`, // 🔥 token enviado → auditoría ok
+            Authorization: `Bearer ${token}`,
           },
         });
       } catch (err) {
@@ -34,6 +66,7 @@ export default function App() {
     }
 
     clearToken();
+    setCurrentUser(null);
     setView("login");
   }
 
@@ -66,22 +99,67 @@ export default function App() {
   if (view === "forgot")
     return <ForgotPassword goLogin={() => setView("login")} />;
 
+  // Helpers de permisos
+  const canViewAudit = permissions.includes("VIEW_AUDIT");
+  const canManageUsers = permissions.includes("MANAGE_USERS");
+  const canManageThresholds = permissions.includes("MANAGE_THRESHOLDS");
+  const canViewHistory = permissions.includes("VIEW_HISTORY");
+  const canViewDashboard = permissions.includes("VIEW_DASHBOARD");
+
   // === VISTAS CON SESIÓN ===
   return (
-    <AppLayout onLogout={handleLogout}>   {/* 👈 ahora usamos handleLogout */}
-      {view === "dash" && <Dashboard thVersion={thVersion} />}
-      {view === "config" && (
-        <ThresholdsPage
-          onSaved={() => {
-            setThVersion((v) => v + 1);
-            setView("dash");
-          }}
-        />
-      )}
-      {view === "history" && <HistoryPage />}
-      {view === "audit" && <AuditPage />}
-      {view === "users" && <UsersPage />}
+    <AppLayout onLogout={handleLogout} permissions={permissions}>
+      {view === "dash" && (canViewDashboard ? (
+        <Dashboard thVersion={thVersion} />
+      ) : (
+        <div className="p-4 text-sm text-slate-600">
+          No tenés permiso para ver el Panel principal.
+        </div>
+      ))}
+
+      {view === "config" &&
+        (canManageThresholds ? (
+          <ThresholdsPage
+            onSaved={() => {
+              setThVersion((v) => v + 1);
+              setView("dash");
+            }}
+          />
+        ) : (
+          <div className="p-4 text-sm text-slate-600">
+            No tenés permiso para configurar umbrales.
+          </div>
+        ))}
+
+      {view === "history" &&
+        (canViewHistory ? (
+          <HistoryPage />
+        ) : (
+          <div className="p-4 text-sm text-slate-600">
+            No tenés permiso para ver el historial.
+          </div>
+        ))}
+
+      {view === "audit" &&
+        (canViewAudit ? (
+          <AuditPage />
+        ) : (
+          <div className="p-4 text-sm text-slate-600">
+            No tenés permiso para ver Auditorías.
+          </div>
+        ))}
+
+      {view === "users" &&
+        (canManageUsers ? (
+          <UsersPage />
+        ) : (
+          <div className="p-4 text-sm text-slate-600">
+            No tenés permiso para gestionar usuarios.
+          </div>
+        ))}
+
       {view === "pools" && (
+      
         <PoolsPage
           onCreated={() => {
             /* nada aún */

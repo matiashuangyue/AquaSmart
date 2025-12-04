@@ -186,4 +186,3 @@ model AuditLog {
 
   fechaHora DateTime @default(now())
 }
-

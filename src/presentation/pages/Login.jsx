@@ -20,8 +20,19 @@ export default function Login({ onLogged, goSignup, goForgot }) {
     try {
       setLoading(true);
       const { token } = await login({ emailOrUsername: id, password: pw });
+
+      // Guardamos el token
       saveToken(token);
-      onLogged?.();
+
+      // 👇 Fuerzo recarga de la app para que App.jsx:
+      // - lea el token
+      // - llame a /api/auth/me
+      // - cargue currentUser y permissions
+      window.location.reload();
+
+      // Si quisieras mantener la navegación sin reload, sería:
+      // onLogged?.();
+      // pero en ese caso tendríamos que modificar App.jsx para recargar /me.
     } catch (e) {
       setErr(e.message || "No se pudo iniciar sesión.");
     } finally {
@@ -35,7 +46,6 @@ export default function Login({ onLogged, goSignup, goForgot }) {
       <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top,_#ffffff_0,_transparent_55%)] pointer-events-none" />
 
       <div className="relative z-10 w-full max-w-5xl">
-
         {/* HEADER */}
         <header className="text-center mb-6 sm:mb-10">
           <h1 className="text-3xl sm:text-4xl font-semibold text-white drop-shadow-md">
@@ -48,14 +58,15 @@ export default function Login({ onLogged, goSignup, goForgot }) {
 
         {/* CONTENIDO PRINCIPAL */}
         <div className="grid md:grid-cols-[1fr_0.9fr] gap-6 items-center">
-
           {/* CARD LOGIN */}
           <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/40 p-6 sm:p-7 relative">
             <div className="absolute -top-3 -right-3 bg-indigo-600 text-white text-xs px-2 py-1 rounded-full shadow">
               v1.0.0
             </div>
 
-            <h2 className="text-xl font-semibold text-slate-800 mb-1">Iniciar sesión</h2>
+            <h2 className="text-xl font-semibold text-slate-800 mb-1">
+              Iniciar sesión
+            </h2>
             <p className="text-xs text-slate-500 mb-4">
               Accedé al panel de control para monitorear tus piletas.
             </p>
@@ -69,10 +80,11 @@ export default function Login({ onLogged, goSignup, goForgot }) {
               </button>
             </div>
 
-
             <form onSubmit={onSubmit} className="space-y-3">
               <div>
-                <label className="block text-xs text-slate-600 mb-1">Email o usuario</label>
+                <label className="block text-xs text-slate-600 mb-1">
+                  Email o usuario
+                </label>
                 <input
                   className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 border-slate-200"
                   placeholder="admin@aquasmart.com"
@@ -83,7 +95,9 @@ export default function Login({ onLogged, goSignup, goForgot }) {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-600 mb-1">Contraseña</label>
+                <label className="block text-xs text-slate-600 mb-1">
+                  Contraseña
+                </label>
                 <input
                   className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 border-slate-200"
                   type="password"
@@ -121,14 +135,15 @@ export default function Login({ onLogged, goSignup, goForgot }) {
               >
                 Registrate
               </button>
-              
             </div>
           </div>
 
           {/* PANEL LATERAL / SESIÓN */}
           <div className="hidden md:flex flex-col justify-between text-white space-y-4">
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/20 shadow-xl">
-              <p className="text-xs uppercase tracking-wide text-emerald-200">Estado del sistema</p>
+              <p className="text-xs uppercase tracking-wide text-emerald-200">
+                Estado del sistema
+              </p>
 
               <div className="mt-2 grid grid-cols-3 gap-3 text-center">
                 <div className="bg-slate-900/50 rounded-xl p-3">
@@ -148,7 +163,8 @@ export default function Login({ onLogged, goSignup, goForgot }) {
               <div className="mt-4 border-t border-white/20 pt-3 text-sm text-indigo-100/80">
                 Última actualización: <strong>hace 12 min</strong>
                 <br />
-                Servidor: <strong className="text-emerald-300">Online</strong>
+                Servidor:{" "}
+                <strong className="text-emerald-300">Online</strong>
               </div>
             </div>
 
@@ -156,7 +172,8 @@ export default function Login({ onLogged, goSignup, goForgot }) {
             <footer className="text-right text-[11px] text-indigo-200/80">
               <p>Proyecto Final · Ingeniería en Sistemas · UAI</p>
               <p className="mt-0.5">
-                Creado por <span className="font-semibold text-white">Yue Huang</span>
+                Creado por{" "}
+                <span className="font-semibold text-white">Yue Huang</span>
               </p>
               <a
                 href="https://github.com/matiashuangyue/AquaSmart.git"

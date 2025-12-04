@@ -5,124 +5,67 @@ import {
   updateUser,
   deleteUser,
 } from "../../infra/http/users";
-
-
-// ===== Permisos base simulados (pensados como tu clase Permiso) =====
-const INITIAL_PERMISSIONS = [
-  {
-    id: "VIEW_DASHBOARD",
-    nombre: "Ver Dashboard",
-    descripcion: "Acceso a la vista principal con métricas.",
-  },
-  {
-    id: "VIEW_HISTORY",
-    nombre: "Ver historial de lecturas",
-    descripcion: "Puede ver el historial de sensores de la pileta.",
-  },
-  {
-    id: "VIEW_AUDIT",
-    nombre: "Ver auditorías",
-    descripcion: "Acceso a la sección de logs del sistema.",
-  },
-  {
-    id: "MANAGE_THRESHOLDS",
-    nombre: "Configurar umbrales",
-    descripcion: "Puede editar los umbrales de pH, cloro y temperatura.",
-  },
-  {
-    id: "MANAGE_USERS",
-    nombre: "Gestionar usuarios",
-    descripcion: "Acceso a la sección de Gestión de Usuarios.",
-  },
-];
-
-// ===== Grupos base simulados (relacionados por permisoIds) =====
-const INITIAL_GROUPS = [
-  {
-    id: "ADMIN",
-    nombre: "Admin",
-    descripcion: "Acceso total a la plataforma.",
-    permisoIds: [
-      "VIEW_DASHBOARD",
-      "VIEW_HISTORY",
-      "VIEW_AUDIT",
-      "MANAGE_THRESHOLDS",
-      "MANAGE_USERS",
-    ],
-  },
-  {
-    id: "TECNICO",
-    nombre: "Técnico",
-    descripcion: "Operaciones sobre piletas y umbrales.",
-    permisoIds: ["VIEW_DASHBOARD", "VIEW_HISTORY", "MANAGE_THRESHOLDS"],
-  },
-  {
-    id: "OWNER",
-    nombre: "Propietario",
-    descripcion: "Dueño de la pileta, acceso a su información.",
-    permisoIds: ["VIEW_DASHBOARD", "VIEW_HISTORY"],
-  },
-];
-
-// ===== Usuarios base simulados =====
-const INITIAL_USERS = [
-  {
-    id: 1,
-    email: "admin@aquasmart.com",
-    role: "ADMIN",
-    createdAt: "2025-11-01T10:00:00.000Z",
-    active: true,
-  },
-  {
-    id: 2,
-    email: "tecnico@aquasmart.com",
-    role: "TECNICO",
-    createdAt: "2025-11-10T08:30:00.000Z",
-    active: true,
-  },
-  {
-    id: 3,
-    email: "propietario@cliente.com",
-    role: "OWNER",
-    createdAt: "2025-11-15T09:15:00.000Z",
-    active: true,
-  },
-  {
-    id: 4,
-    email: "inactivo@cliente.com",
-    role: "OWNER",
-    createdAt: "2025-11-16T11:00:00.000Z",
-    active: false,
-  },
-];
+import { fetchGroups } from "../../infra/http/groups";
+import {
+  fetchPermissions,
+  createPermission,
+  addPermissionToGroup,
+  removePermissionFromGroup,
+} from "../../infra/http/permissions";
 
 export default function UsersPage() {
   const [activeTab, setActiveTab] = useState("users"); // "users" | "groups"
   const [users, setUsers] = useState([]);
-  const [groups, setGroups] = useState(INITIAL_GROUPS);
-  const [permissions, setPermissions] = useState(INITIAL_PERMISSIONS);
+  const [permissions, setPermissions] = useState([]);
 
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("ALL");
+  const [roleFilter, setRoleFilter] = useState("ALL"); // groupId
   const [statusFilter, setStatusFilter] = useState("ALL"); // ALL | ACTIVE | INACTIVE
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [formEmail, setFormEmail] = useState("");
-  const [formRole, setFormRole] = useState("OWNER");
+  const [formRole, setFormRole] = useState(""); // groupId
   const [formActive, setFormActive] = useState(true);
-    useEffect(() => {
+  const [groups, setGroups] = useState([]);
+
+  // Cargar usuarios, grupos (con permisos) y permisos
+  useEffect(() => {
     (async () => {
       try {
-        const list = await fetchUsers();
-        setUsers(list);
+        const [list, grp, perms] = await Promise.all([
+          fetchUsers(),
+          fetchGroups(),
+          fetchPermissions(),
+        ]);
+
+        setUsers(list); // [{id,email,groupId,groupName,active,createdAt}]
+
+        // adaptamos grupos para la pestaña "Grupos y permisos"
+        setGroups(
+          grp.map((g) => ({
+            id: g.id,
+            nombre: g.name,
+            descripcion: g.desc || "",
+            // desde backend: permissionCodes: ["VIEW_DASHBOARD", ...]
+            permisoIds: g.permissionCodes || [],
+          }))
+        );
+
+        // adaptamos permisos para UI: usamos code como id y label
+        setPermissions(
+          perms.map((p) => ({
+            id: p.code, // lo usamos como code
+            nombre: p.code,
+            descripcion: "",
+          }))
+        );
       } catch (e) {
         console.error(e);
-        alert(e.message || "Error cargando usuarios");
+        alert(e.message || "Error cargando usuarios / grupos / permisos");
       }
     })();
   }, []);
-
 
   // --- Derivados usuarios ---
   const filteredUsers = useMemo(() => {
@@ -130,7 +73,7 @@ export default function UsersPage() {
       .filter((u) => {
         if (search && !u.email.toLowerCase().includes(search.toLowerCase()))
           return false;
-        if (roleFilter !== "ALL" && u.role !== roleFilter) return false;
+        if (roleFilter !== "ALL" && u.groupId !== roleFilter) return false;
         if (statusFilter === "ACTIVE" && !u.active) return false;
         if (statusFilter === "INACTIVE" && u.active) return false;
         return true;
@@ -146,7 +89,7 @@ export default function UsersPage() {
   function openNewUserModal() {
     setEditingUser(null);
     setFormEmail("");
-    setFormRole("OWNER");
+    setFormRole(groups[0]?.id || "");
     setFormActive(true);
     setModalOpen(true);
   }
@@ -154,7 +97,7 @@ export default function UsersPage() {
   function openEditUserModal(user) {
     setEditingUser(user);
     setFormEmail(user.email);
-    setFormRole(user.role);
+    setFormRole(user.groupId || "");
     setFormActive(user.active);
     setModalOpen(true);
   }
@@ -163,52 +106,70 @@ export default function UsersPage() {
     setModalOpen(false);
   }
 
-    async function handleSaveUser(e) {
-      e.preventDefault();
-      if (!formEmail.trim()) {
-        alert("El email es obligatorio.");
-        return;
-      }
-
-      try {
-        if (editingUser) {
-          const updated = await updateUser(editingUser.id, {
-            email: formEmail.trim(),
-            role: formRole,
-            active: formActive,
-          });
-          setUsers((prev) =>
-            prev.map((u) => (u.id === updated.id ? updated : u))
-          );
-        } else {
-          const created = await createUser({
-            email: formEmail.trim(),
-            role: formRole,
-            active: formActive,
-          });
-          // lo ponemos al principio de la lista
-          setUsers((prev) => [created, ...prev]);
-        }
-
-        setModalOpen(false);
-      } catch (err) {
-        console.error(err);
-        alert(err.message || "Error guardando usuario");
-      }
+  async function handleSaveUser(e) {
+    e.preventDefault();
+    if (!formEmail.trim()) {
+      alert("El email es obligatorio.");
+      return;
+    }
+    if (!formRole) {
+      alert("Debe seleccionar un rol / grupo.");
+      return;
     }
 
+    try {
+      if (editingUser) {
+        const updated = await updateUser(editingUser.id, {
+          email: formEmail.trim(),
+          groupId: formRole,
+          active: formActive,
+        });
 
-    async function handleDeleteUser(user) {
-      if (!window.confirm(`¿Eliminar al usuario ${user.email}?`)) return;
-      try {
-        await deleteUser(user.id);
-        setUsers((prev) => prev.filter((u) => u.id !== user.id));
-      } catch (err) {
-        console.error(err);
-        alert(err.message || "Error eliminando usuario");
+        const group = groups.find((g) => g.id === updated.groupId);
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === updated.id
+              ? {
+                  ...u,
+                  ...updated,
+                  groupName: group ? group.nombre : u.groupName || null,
+                }
+              : u
+          )
+        );
+      } else {
+        const created = await createUser({
+          email: formEmail.trim(),
+          groupId: formRole,
+          active: formActive,
+        });
+
+        const group = groups.find((g) => g.id === created.groupId);
+        const newUser = {
+          ...created,
+          groupName: group ? group.nombre : created.groupName || null,
+        };
+
+        setUsers((prev) => [newUser, ...prev]);
       }
-    }
 
+      setModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert(err.message || "Error guardando usuario");
+    }
+  }
+
+  async function handleDeleteUser(user) {
+    if (!window.confirm(`¿Eliminar al usuario ${user.email}?`)) return;
+    try {
+      await deleteUser(user.id);
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+    } catch (err) {
+      console.error(err);
+      alert(err.message || "Error eliminando usuario");
+    }
+  }
 
   // --- Render ---
   return (
@@ -274,6 +235,7 @@ export default function UsersPage() {
           totalCount={totalCount}
           activeCount={activeCount}
           inactiveCount={inactiveCount}
+          groups={groups}
         />
       ) : (
         <GroupsTab
@@ -295,6 +257,7 @@ export default function UsersPage() {
           active={formActive}
           setActive={setFormActive}
           editing={!!editingUser}
+          groups={groups}
         />
       )}
     </div>
@@ -316,6 +279,7 @@ function UsersTab({
   totalCount,
   activeCount,
   inactiveCount,
+  groups,
 }) {
   return (
     <>
@@ -344,9 +308,11 @@ function UsersTab({
               className="border rounded-lg px-2 py-1 text-sm"
             >
               <option value="ALL">Todos</option>
-              <option value="ADMIN">Admin</option>
-              <option value="TECNICO">Técnico</option>
-              <option value="OWNER">Propietario</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nombre}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -387,7 +353,7 @@ function UsersTab({
             <tr>
               <Th>ID</Th>
               <Th>Email</Th>
-              <Th>Rol</Th>
+              <Th>Rol / Grupo</Th>
               <Th>Fecha registro</Th>
               <Th>Estado</Th>
               <Th>Acciones</Th>
@@ -396,13 +362,10 @@ function UsersTab({
           <tbody>
             {users.map((u) => {
               const d = new Date(u.createdAt);
-              const fecha = d.toLocaleDateString();
-              const rolLabel =
-                u.role === "ADMIN"
-                  ? "Admin"
-                  : u.role === "TECNICO"
-                  ? "Técnico"
-                  : "Propietario";
+              const fecha = isNaN(d.getTime())
+                ? "-"
+                : d.toLocaleDateString();
+              const rolLabel = u.groupName || "Sin grupo";
 
               return (
                 <tr key={u.id} className="border-t">
@@ -466,53 +429,72 @@ function UsersTab({
 
 function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
   const [selectedGroupId, setSelectedGroupId] = useState(
-    groups.length ? groups[0].id : null
+    groups.length ? groups[0].id : ""
   );
 
-  const selectedGroup = groups.find((g) => g.id === selectedGroupId) || null;
+  const selectedGroup =
+    groups.find((g) => g.id === selectedGroupId) || null;
 
-  // crear un permiso nuevo (queda en la lista global, aunque todavía no se use)
-  function handleCreatePermission() {
-    const nombre = prompt("Nombre visible del permiso (ej: Ver Reportes):");
-    if (!nombre) return;
-
-    const codigo = prompt(
+  // crear un permiso nuevo en backend
+  async function handleCreatePermission() {
+    const nombre = prompt(
       'Código/tag técnico del permiso (ej: "VIEW_REPORTS").'
     );
-    if (!codigo) return;
+    if (!nombre) return;
 
-    const id = codigo.trim().toUpperCase().replace(/\s+/g, "_");
-    if (permissions.some((p) => p.id === id)) {
-      alert("Ya existe un permiso con ese código.");
-      return;
+    const code = nombre.trim().toUpperCase().replace(/\s+/g, "_");
+
+    try {
+      const perm = await createPermission(code);
+
+      const nuevo = {
+        id: perm.code,
+        nombre: perm.code,
+        descripcion: "",
+      };
+
+      setPermissions((prev) => [...prev, nuevo]);
+      alert(
+        `Permiso creado: ${perm.code}. Ahora podés asignarlo a los grupos.`
+      );
+    } catch (err) {
+      console.error(err);
+      alert(err.message || "Error creando permiso");
     }
-
-    const nuevo = {
-      id,
-      nombre: nombre.trim(),
-      descripcion: "",
-    };
-
-    setPermissions((prev) => [...prev, nuevo]);
-    alert(
-      `Permiso creado: ${id}. Más adelante lo podrás usar en backend/guards para controlar acceso real.`
-    );
   }
 
-  // toggle asignación de permiso a grupo
-  function togglePermission(groupId, permId) {
-    setGroups((prev) =>
-      prev.map((g) => {
-        if (g.id !== groupId) return g;
-        const has = g.permisoIds.includes(permId);
-        return {
-          ...g,
-          permisoIds: has
-            ? g.permisoIds.filter((id) => id !== permId)
-            : [...g.permisoIds, permId],
-        };
-      })
-    );
+  // toggle asignación de permiso a grupo (backend + estado local)
+  async function togglePermission(groupId, permId) {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+
+    const has = group.permisoIds.includes(permId);
+
+    try {
+      if (has) {
+        await removePermissionFromGroup(groupId, permId);
+      } else {
+        await addPermissionToGroup(groupId, permId);
+      }
+
+      setGroups((prev) =>
+        prev.map((g) => {
+          if (g.id !== groupId) return g;
+          return {
+            ...g,
+            permisoIds: has
+              ? g.permisoIds.filter((id) => id !== permId)
+              : [...g.permisoIds, permId],
+          };
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      alert(
+        err.message ||
+          "Error actualizando permisos del grupo"
+      );
+    }
   }
 
   return (
@@ -523,7 +505,7 @@ function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
           <span className="text-sm text-slate-600">Grupo:</span>
           <select
             className="border rounded-lg px-2 py-1 text-sm"
-            value={selectedGroupId || ""}
+            value={selectedGroupId}
             onChange={(e) => setSelectedGroupId(e.target.value)}
           >
             {groups.map((g) => (
@@ -559,13 +541,14 @@ function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
           </div>
 
           <p className="text-xs text-slate-500">
-            Tildá qué permisos tiene este grupo. Los permisos no se borran de la
-            base, solo se asignan o se quitan del grupo.
+            Tildá qué permisos tiene este grupo. El cambio impacta
+            directamente en el backend (tabla GroupPermission).
           </p>
 
           <div className="border rounded-xl divide-y max-h-72 overflow-y-auto">
             {permissions.map((p) => {
-              const checked = selectedGroup.permisoIds.includes(p.id);
+              const checked =
+                selectedGroup.permisoIds.includes(p.id);
               return (
                 <label
                   key={p.id}
@@ -575,14 +558,13 @@ function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
                     type="checkbox"
                     className="mt-0.5"
                     checked={checked}
-                    onChange={() => togglePermission(selectedGroup.id, p.id)}
+                    onChange={() =>
+                      togglePermission(selectedGroup.id, p.id)
+                    }
                   />
                   <div>
                     <div className="text-xs font-medium text-slate-800">
                       {p.nombre}
-                      <span className="ml-2 text-[11px] text-slate-400">
-                        ({p.id})
-                      </span>
                     </div>
                     {p.descripcion && (
                       <div className="text-[11px] text-slate-500">
@@ -601,9 +583,9 @@ function GroupsTab({ groups, setGroups, permissions, setPermissions }) {
           </div>
 
           <p className="text-[11px] text-slate-400">
-            Más adelante, en el backend / guards de frontend, podés usar el
-            código del permiso (por ejemplo, MANAGE_USERS o VIEW_AUDIT) para
-            mostrar/ocultar secciones reales.
+            Estos permisos son los mismos que se usan en{" "}
+            <code>currentUser.permissions</code> (ej. MANAGE_USERS,
+            VIEW_AUDIT) para controlar el acceso a cada sección.
           </p>
         </div>
       )}
@@ -623,6 +605,7 @@ function UserModal({
   active,
   setActive,
   editing,
+  groups,
 }) {
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
@@ -632,7 +615,9 @@ function UserModal({
         </h2>
         <form onSubmit={onSubmit} className="space-y-3">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Email</label>
+            <label className="block text-xs text-slate-500 mb-1">
+              Email
+            </label>
             <input
               type="email"
               className="border rounded-lg px-2 py-1 w-full text-sm"
@@ -650,10 +635,13 @@ function UserModal({
               className="border rounded-lg px-2 py-1 w-full text-sm"
               value={role}
               onChange={(e) => setRole(e.target.value)}
+              required
             >
-              <option value="ADMIN">Admin</option>
-              <option value="TECNICO">Técnico</option>
-              <option value="OWNER">Propietario</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nombre}
+                </option>
+              ))}
             </select>
           </div>
 

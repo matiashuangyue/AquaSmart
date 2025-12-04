@@ -18,21 +18,58 @@ function sign(user) {
     { expiresIn: JWT_EXPIRES }
   );
 }
+// GET /api/auth/me
 router.get("/me", requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.sub },
-    include: { person: true }
+    include: {
+      person: true,
+      groups: {
+        include: {
+          group: {
+            include: {
+              perms: {
+                include: {
+                  permission: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+  // 🔹 Grupos del usuario
+  const groups = user.groups.map((ug) => ({
+    id: ug.group.id,
+    name: ug.group.name,
+    desc: ug.group.desc,
+  }));
+
+  // 🔹 Permisos derivados de los grupos (GroupPermission → Permission)
+  const permSet = new Set();
+  for (const ug of user.groups) {
+    for (const gp of ug.group.perms) {
+      if (gp.permission?.code) {
+        permSet.add(gp.permission.code);
+      }
+    }
+  }
+  const permissions = Array.from(permSet); // ej: ["VIEW_DASHBOARD","VIEW_AUDIT",...]
 
   res.json({
     id: user.id,
     username: user.username,
     name: user.person?.name,
-    email: user.person?.email
+    email: user.person?.email,
+    groups,
+    permissions,
   });
 });
+
 
 // POST /api/auth/signup
 router.post("/signup", async (req, res) => {

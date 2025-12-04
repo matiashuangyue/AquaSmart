@@ -1,12 +1,12 @@
 import Sidebar from "../components/Sidebar";
 import HeaderBar from "../components/HeaderBar";
 
-export default function AppLayout({ children, onLogout }) {
+export default function AppLayout({ children, onLogout, permissions = [] }) {
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar */}
       <aside className="w-64 hidden md:block border-r bg-white">
-        <Sidebar />
+        <Sidebar permissions={permissions} />   {/* 👈 ahora sí */}
       </aside>
 
       {/* Contenido */}

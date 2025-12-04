@@ -1,67 +1,134 @@
-// prisma/seed.js
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
 const prisma = new PrismaClient();
 
 async function main() {
-  // Usuario admin (con Person y passwordHash)
-  const admin = await prisma.user.upsert({
+  console.log("🌱 Ejecutando SEED (admin forzado)...");
+
+  // ---------------------------------------------------------
+  // 1) Crear o actualizar usuario admin
+  // ---------------------------------------------------------
+  const passwordHash = await bcrypt.hash("Admin123!", 10);
+
+  const adminUser = await prisma.user.upsert({
     where: { username: "admin" },
-    update: {},
+    update: {
+      passwordHash,
+      active: true,
+    },
     create: {
       username: "admin",
+      passwordHash,
       active: true,
-      passwordHash: "admin-hash-demo", // TODO: reemplazar por hash real
       person: {
         create: {
-          name: "Admin",
-          email: "admin@local",
+          name: "Administrador",
+          email: "admin@aquasmart.com",
         },
       },
     },
+    include: { person: true },
   });
 
-  // Pool principal con threshold usando defaults
-  const pool = await prisma.pool.create({
-    data: {
-      name: "Piscina Principal",
-      owner: { connect: { id: admin.id } },
-      threshold: {
-        create: {}, // usa los valores por defecto del modelo Threshold
-      },
+  console.log("✔ Usuario admin listo:", {
+    id: adminUser.id,
+    username: adminUser.username,
+    email: adminUser.person?.email,
+  });
+
+  // ---------------------------------------------------------
+  // 2) Crear grupo ADMIN
+  // ---------------------------------------------------------
+  const adminGroup = await prisma.group.upsert({
+    where: { id: "ADMIN" },
+    update: {
+      name: "Administrador",
+      desc: "Acceso total a la plataforma",
+    },
+    create: {
+      id: "ADMIN",
+      name: "Administrador",
+      desc: "Acceso total a la plataforma",
     },
   });
 
-  const now = Date.now();
+  console.log("✔ Grupo ADMIN listo");
 
-  // 10 lecturas cada 5 minutos, con parámetros anidados
-  const lecturasPromises = Array.from({ length: 10 }).map((_, i) => {
-    const ph = 7.2 + (Math.random() - 0.5) * 0.3;
-    const freeChlor = 1.0 + (Math.random() - 0.5) * 0.3;
-    const tempC = 27 + Math.round((Math.random() - 0.5) * 3);
+  // ---------------------------------------------------------
+  // 3) Crear permisos base
+  // ---------------------------------------------------------
+  const PERMISSIONS = [
+    "VIEW_DASHBOARD",
+    "VIEW_HISTORY",
+    "VIEW_AUDIT",
+    "MANAGE_THRESHOLDS",
+    "MANAGE_USERS",
+    "MANAGE_POOLS",
+    "SIMULATE_SENSOR",
+  ];
 
-    return prisma.sensorLectura.create({
-      data: {
-        pool: { connect: { id: pool.id } },
-        fechaHora: new Date(now - (9 - i) * 5 * 60 * 1000),
-        parametros: {
-          create: [
-            { tipo: "PH", unidad: "", valor: ph },
-            { tipo: "CLORO_LIBRE", unidad: "ppm", valor: freeChlor },
-            { tipo: "TEMP", unidad: "°C", valor: tempC },
-          ],
-        },
+  for (const code of PERMISSIONS) {
+    await prisma.permission.upsert({
+      where: { code },
+      update: {},
+      create: {
+        id: code,
+        code,
       },
     });
+  }
+
+  console.log("✔ Permisos base OK");
+
+  // ---------------------------------------------------------
+  // 4) Asignar permisos al grupo ADMIN
+  // ---------------------------------------------------------
+  for (const code of PERMISSIONS) {
+    await prisma.groupPermission.upsert({
+      where: {
+        groupId_permissionId: {
+          groupId: adminGroup.id,
+          permissionId: code,
+        },
+      },
+      update: {},
+      create: {
+        groupId: adminGroup.id,
+        permissionId: code,
+      },
+    });
+  }
+
+  console.log("✔ Permisos asignados a ADMIN");
+
+  // ---------------------------------------------------------
+  // 5) Vincular usuario admin al grupo ADMIN
+  // ---------------------------------------------------------
+  await prisma.userGroup.upsert({
+    where: {
+      userId_groupId: {
+        userId: adminUser.id,
+        groupId: adminGroup.id,
+      },
+    },
+    update: {},
+    create: {
+      userId: adminUser.id,
+      groupId: adminGroup.id,
+    },
   });
 
-  await Promise.all(lecturasPromises);
+  console.log("✔ admin ↔ ADMIN vinculado");
 
-  console.log("✅ Seed cargado");
+  console.log("✅ SEED COMPLETADO");
 }
 
 main()
   .catch((e) => {
-    console.error("❌ Error en seed:", e);
+    console.error(e);
     process.exit(1);
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

@@ -12,7 +12,7 @@ router.get("/", requireAuth, async (req, res) => {
       orderBy: { fechaHora: "desc" },
       include: {
         user: true,
-        pool: true,   // 👈 ahora también traemos el nombre de la pileta
+        pool: true,   
       },
       take: 500,
     });
@@ -25,7 +25,7 @@ router.get("/", requireAuth, async (req, res) => {
       detalle: l.detail,
       fechaHora: l.fechaHora,
 
-      // 👇 NUEVO
+    
       piletaNombre: l.pool?.name || "(sin pileta)",
       poolId: l.poolId,
     }));

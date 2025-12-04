@@ -6,6 +6,8 @@ import authRoutes from "./routes/auth.js";
 import poolsRoutes from "./routes/pools.js";
 import auditRoutes from "./routes/audit.js";
 import usersRoutes from "./routes/users.js";
+import groupsRoutes from "./routes/groups.js";
+import permissionsRouter from "./routes/permissions.js";
 import { requireAuth } from "./middlewares/auth.js";
 import { audit } from "./infra/logger.js";
 
@@ -52,6 +54,13 @@ app.use("/api/audit", auditRoutes);
 
 // Rutas de usuarios
 app.use("/api/users", usersRoutes);
+
+// Rutas de grupos
+app.use("/api/groups", groupsRoutes);
+
+// Rutas de permisos
+app.use("/api/permissions", permissionsRouter);
+
 // ===============================
 //   MEDICIONES / SIMULACIÓN
 // ===============================
