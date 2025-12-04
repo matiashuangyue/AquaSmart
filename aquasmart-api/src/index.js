@@ -8,6 +8,7 @@ import auditRoutes from "./routes/audit.js";
 import usersRoutes from "./routes/users.js";
 import groupsRoutes from "./routes/groups.js";
 import permissionsRouter from "./routes/permissions.js";
+import thresholdsRouter from "./routes/thresholds.js";
 import { requireAuth } from "./middlewares/auth.js";
 import { audit } from "./infra/logger.js";
 
@@ -61,6 +62,8 @@ app.use("/api/groups", groupsRoutes);
 // Rutas de permisos
 app.use("/api/permissions", permissionsRouter);
 
+// Rutas de umbrales
+app.use("/api/thresholds", thresholdsRouter);
 // ===============================
 //   MEDICIONES / SIMULACIÓN
 // ===============================
@@ -183,65 +186,6 @@ await audit({
     res.status(500).json({ error: "Error simulando medición" });
   }
 });
-
-
-
-// ===============================
-//   UMBRALES
-// ===============================
-app.get("/api/thresholds", requireAuth, async (req, res) => {
-  try {
-    const poolIdRaw = req.query.poolId || "pool1";
-    const poolId = await resolvePoolId(req, poolIdRaw);
-
-    const th = await prisma.threshold.findUnique({ where: { poolId } });
-    res.json(th);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Error obteniendo umbrales" });
-  }
-});
-
-
-
-// PUT actualizar umbrales
-app.put("/api/thresholds", requireAuth, async (req, res) => {
-  try {
-    const userId = req.user.sub;
-    const { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax } =
-      req.body;
-
-    if (!poolId) {
-      return res.status(400).json({ error: "poolId requerido" });
-    }
-
-    const up = await prisma.threshold.upsert({
-      where: { poolId },
-      update: { phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
-      create: { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
-    });
-
-    // buscar nombre de pileta
-    const pool = await prisma.pool.findUnique({ where: { id: poolId } });
-
-    await audit({
-      userId,
-      action: "EDITAR_UMBRAL",
-      module: "Umbrales",
-      detail: pool
-        ? `Actualizó umbrales de la pileta "${pool.name}"`
-        : `Actualizó umbrales de una pileta`,
-      poolId,
-    });
-
-    res.json(up);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Error guardando umbrales" });
-  }
-});
-
-
 
 
 // ===============================
