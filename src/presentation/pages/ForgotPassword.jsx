@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { requestPasswordReset } from "../../infra/http/auth";
 
 export default function ForgotPassword({ goLogin }) {
   const [emailOrUser, setEmailOrUser] = useState("");
@@ -19,11 +20,7 @@ export default function ForgotPassword({ goLogin }) {
     try {
       setLoading(true);
 
-      // 👉 Acá más adelante podés llamar a tu API real:
-      // await requestPasswordReset({ emailOrUsername: emailOrUser });
-      //
-      // Por ahora simulamos:
-      await new Promise((r) => setTimeout(r, 1000));
+      await requestPasswordReset(emailOrUser.trim());
 
       setOkMsg(
         "Si la cuenta existe, te enviaremos instrucciones para restablecer la contraseña."
@@ -128,14 +125,13 @@ export default function ForgotPassword({ goLogin }) {
               <ol className="mt-3 space-y-2 text-xs text-indigo-100 list-decimal list-inside">
                 <li>Ingresás tu email o usuario asociado a AquaSmart.</li>
                 <li>El sistema genera un enlace o código temporal.</li>
-                <li>Recibís instrucciones por email (en una implementación real).</li>
-                <li>Definís una nueva contraseña segura.</li>
+                <li>Recibís instrucciones por email.</li>
+                <li>Definís una nueva contraseña segura (en una implementación completa).</li>
               </ol>
 
               <div className="mt-4 border-t border-white/20 pt-3 text-xs text-indigo-100/80">
                 Este flujo demuestra que el sistema está pensado para una
-                recuperación segura de credenciales, incluso si todavía no
-                tenés el backend implementado.
+                recuperación segura de credenciales.
               </div>
             </div>
 

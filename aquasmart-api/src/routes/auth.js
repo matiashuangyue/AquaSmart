@@ -4,12 +4,15 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireAuth } from "../middlewares/auth.js";
 import { audit } from "../infra/logger.js";
+import { sendPasswordResetMail } from "../infra/mailer.js"; // 👈 NUEVO
 
 const prisma = new PrismaClient();
 const router = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const JWT_EXPIRES = "7d";
+
+const APP_URL = process.env.APP_URL || "http://localhost:5173";
 
 function sign(user) {
   return jwt.sign(
@@ -18,6 +21,7 @@ function sign(user) {
     { expiresIn: JWT_EXPIRES }
   );
 }
+
 // GET /api/auth/me
 router.get("/me", requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({
@@ -70,7 +74,6 @@ router.get("/me", requireAuth, async (req, res) => {
   });
 });
 
-
 // POST /api/auth/signup
 router.post("/signup", async (req, res) => {
   try {
@@ -103,7 +106,6 @@ router.post("/signup", async (req, res) => {
       detail: `Usuario creado (${username})`,
       poolId: null,
     });
-
 
     // opcional: pileta por defecto
     await prisma.pool.create({ data: { name: "Piscina Principal", ownerId: user.id } });
@@ -141,28 +143,100 @@ router.post("/login", async (req, res) => {
 
     const token = sign(user);
 
-// Auditoría
-await audit({
-  userId: user.id,
-  action: "LOGIN",
-  module: "Auth",
-  detail: "Inicio de sesión",
-  poolId: null,
-});
+    // Auditoría
+    await audit({
+      userId: user.id,
+      action: "LOGIN",
+      module: "Auth",
+      detail: "Inicio de sesión",
+      poolId: null,
+    });
 
-res.json({
-  token,
-  user: {
-    id: user.id,
-    username: user.username,
-    name: user.person?.name,
-    email: user.person?.email
-  }
-});
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        name: user.person?.name,
+        email: user.person?.email
+      }
+    });
 
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Error de servidor" });
+  }
+});
+
+// POST /api/auth/forgot-password
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { emailOrUsername } = req.body;
+
+    if (!emailOrUsername) {
+      return res.status(400).json({ error: "Email o usuario requerido" });
+    }
+
+    // respuesta genérica SIEMPRE (para no filtrar si existe o no)
+    const genericResponse = {
+      message: "Si la cuenta existe, te enviaremos un email con instrucciones.",
+    };
+
+    // buscar usuario
+    let user = await prisma.user.findUnique({
+      where: { username: emailOrUsername },
+      include: { person: true },
+    });
+
+    if (!user) {
+      const person = await prisma.person.findUnique({
+        where: { email: emailOrUsername },
+        include: { user: true },
+      });
+      if (person?.user) {
+        user = await prisma.user.findUnique({
+          where: { id: person.user.id },
+          include: { person: true },
+        });
+      }
+    }
+
+    // si no existe o no tiene mail, devolvemos igual OK genérico
+    if (!user || !user.person?.email) {
+      return res.json(genericResponse);
+    }
+
+    // generar token de reset (JWT corto)
+    const resetToken = jwt.sign(
+      { sub: user.id, type: "reset" },
+      JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    const resetLink = `${APP_URL}/reset-password?token=${encodeURIComponent(
+      resetToken
+    )}`;
+
+    try {
+      await sendPasswordResetMail(user.person.email, resetLink);
+    } catch (err) {
+      console.error("Error enviando mail de reset:", err);
+      // igual devolvemos genérico
+    }
+
+    // Auditoría
+    await audit({
+      userId: user.id,
+      action: "FORGOT_PASSWORD",
+      module: "Auth",
+      detail: `Solicitud de restablecimiento de contraseña`,
+      poolId: null,
+    });
+
+    return res.json(genericResponse);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Error procesando la solicitud" });
   }
 });
 
@@ -187,6 +261,5 @@ router.post("/logout", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Error registrando logout" });
   }
 });
-
 
 export default router;

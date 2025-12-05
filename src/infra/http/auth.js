@@ -37,16 +37,19 @@ export async function login({ emailOrUsername, password }) {
   return data; // { token, user }
 }
 
-export async function me() {
-  const r = await fetch(`${API}/api/auth/me`, {
-    headers: {
-      "Authorization": `Bearer ${getToken()}`
-    }
+// NUEVO: solicitar reset de contraseña
+export async function requestPasswordReset(emailOrUsername) {
+  const r = await fetch(`${API}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ emailOrUsername }),
   });
 
   const data = await safeJson(r);
 
-  if (!r.ok) throw new Error(data?.error || "No autorizado");
+  if (!r.ok) {
+    throw new Error(data?.error || "No se pudo procesar la solicitud.");
+  }
 
-  return data; // { id, username, name, email }
+  return data; // { message: "..."}
 }
