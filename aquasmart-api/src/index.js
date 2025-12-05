@@ -332,3 +332,67 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ API lista en http://localhost:${PORT}`);
 });
+
+// ===============================
+//   ACCIONES CORRECTIVAS
+// ===============================
+app.post("/api/corrective-actions", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.sub;
+    const { poolId, detail } = req.body;
+
+    if (!detail || !detail.trim()) {
+      return res
+        .status(400)
+        .json({ error: "El detalle de la acción es obligatorio." });
+    }
+
+    // (opcional) verificar que la pileta exista
+    let pool = null;
+    if (poolId) {
+      pool = await prisma.pool.findUnique({ where: { id: poolId } });
+    }
+
+    // 👉 Guardar en tabla propia de acciones correctivas (ajustá nombres si hace falta)
+    let corrective = null;
+    try {
+      // ⚠️ IMPORTANTE:
+      // Si tu modelo Prisma se llama "AccionCorrectiva", el cliente es prisma.accionCorrectiva
+      // y los campos de data tenés que ponerlos EXACTAMENTE como en tu schema.prisma.
+      corrective = await prisma.accionCorrectiva.create({
+        data: {
+          userId,               // ajustá si tu campo se llama distinto (ej: usuarioId)
+          poolId: poolId || null,
+          detalle: detail.trim() // ajustá si tu campo se llama "detail" o similar
+        },
+      });
+    } catch (err) {
+      console.warn(
+        "⚠️ No se pudo guardar en AccionCorrectiva (revisá nombres de modelo/campos):",
+        err.message
+      );
+    }
+
+    // 👉 Registrar también en auditoría
+    await audit({
+      userId,
+      action: "ACCION_CORRECTIVA",
+      module: "Acciones",
+      detail: detail.trim(),
+      poolId: poolId || null,
+    });
+
+    console.log("✅ Acción correctiva registrada:", {
+      userId,
+      poolId,
+      detail: detail.trim(),
+    });
+
+    return res.status(201).json({ ok: true, corrective });
+  } catch (e) {
+    console.error("Error registrando acción correctiva:", e);
+    return res
+      .status(500)
+      .json({ error: "Error registrando acción correctiva" });
+  }
+});
