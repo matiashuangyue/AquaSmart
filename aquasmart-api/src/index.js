@@ -11,9 +11,11 @@ import permissionsRouter from "./routes/permissions.js";
 import thresholdsRouter from "./routes/thresholds.js";
 import { requireAuth } from "./middlewares/auth.js";
 import { audit } from "./infra/logger.js";
+import { sendAlertMail } from "./infra/mailer.js"; // 👈 NUEVO
 
 const prisma = new PrismaClient();
 const app = express();
+
 // Helper: resolver poolId lógico ("pool1") al real de BD del usuario
 async function resolvePoolId(req, poolIdFromClient) {
   // Si ya viene uno real distinto de "pool1", lo usamos tal cual
@@ -36,13 +38,43 @@ async function resolvePoolId(req, poolIdFromClient) {
   return pool?.id || poolIdFromClient || "pool1";
 }
 
-
 app.use(cors());
 app.use(express.json());
 
 // Helper: formato hora corta
 const toHHMM = (d) =>
   new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+// 👇 NUEVO: memoria simple para limitar frecuencia de mails
+const lastAlertMap = new Map();
+/**
+ * key = `${userId}:${poolId}:${mode}`
+ * value = timestamp (ms)
+ */
+function shouldSendAlert(userId, poolId, mode) {
+  if (!mode || mode === "NONE") return false;
+  if (mode === "EACH") return true; // siempre
+
+  const key = `${userId}:${poolId}:${mode}`;
+  const now = Date.now();
+  const last = lastAlertMap.get(key) || 0;
+
+  let minDiffMs = 0;
+  if (mode === "EVERY_5_MIN") {
+    minDiffMs = 5 * 60 * 1000;
+  } else if (mode === "DAILY") {
+    minDiffMs = 24 * 60 * 60 * 1000;
+  } else {
+    // modo desconocido -> no enviar
+    return false;
+  }
+
+  if (now - last >= minDiffMs) {
+    lastAlertMap.set(key, now);
+    return true;
+  }
+  return false;
+}
 
 // Rutas de auth
 app.use("/api/auth", authRoutes);
@@ -124,7 +156,6 @@ app.get("/api/measurements/history", async (req, res) => {
       };
     });
 
-
     res.json(data);
   } catch (e) {
     console.error(e);
@@ -132,12 +163,12 @@ app.get("/api/measurements/history", async (req, res) => {
   }
 });
 
-
 // POST simular una medición (crea SensorLectura + Parámetros)
 app.post("/api/sim/run-once", requireAuth, async (req, res) => {
   try {
     const userId = req.user.sub;
     const poolIdRaw = req.body?.poolId || "pool1";
+    const notifyMode = req.body?.notifyMode || "NONE"; // 👈 NUEVO
     const poolId = await resolvePoolId(req, poolIdRaw);
 
     const ph = +(6.5 + Math.random() * 2).toFixed(1);
@@ -159,23 +190,71 @@ app.post("/api/sim/run-once", requireAuth, async (req, res) => {
     });
 
     // buscamos la pileta para mostrar el nombre en el detalle
-const pool = await prisma.pool.findUnique({
-  where: { id: poolId },
-});
+    const pool = await prisma.pool.findUnique({
+      where: { id: poolId },
+    });
 
-await audit({
-  userId,
-  action: "SIMULAR_LECTURA",
-  module: "Sensores",
-  detail: pool
-    ? `Lectura simulada en pileta ${pool.name}`
-    : `Lectura simulada en una pileta`,
-  poolId,
-});
+    await audit({
+      userId,
+      action: "SIMULAR_LECTURA",
+      module: "Sensores",
+      detail: pool
+        ? `Lectura simulada en pileta ${pool.name}`
+        : `Lectura simulada en una pileta`,
+      poolId,
+    });
 
+    // 👉 NUEVO: evaluación simple de umbrales + envío de mail
+    if (notifyMode && notifyMode !== "NONE") {
+      // obtenemos email del usuario
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { person: true },
+      });
+
+      // umbrales de la pileta
+      const th = await prisma.threshold.findUnique({
+        where: { poolId },
+      });
+
+      if (user?.person?.email && th) {
+        const alerts = [];
+
+        if (ph < th.phMin || ph > th.phMax) {
+          alerts.push(
+            `pH fuera de rango: ${ph} (umbral ${th.phMin} – ${th.phMax})`
+          );
+        }
+        if (cl < th.chlorMin || cl > th.chlorMax) {
+          alerts.push(
+            `Cloro libre fuera de rango: ${cl} ppm (umbral ${th.chlorMin} – ${th.chlorMax} ppm)`
+          );
+        }
+        if (t < th.tempMin || t > th.tempMax) {
+          alerts.push(
+            `Temperatura fuera de rango: ${t} °C (umbral ${th.tempMin} – ${th.tempMax} °C)`
+          );
+        }
+
+        if (alerts.length > 0 && shouldSendAlert(userId, poolId, notifyMode)) {
+          try {
+            await sendAlertMail({
+              to: user.person.email,
+              poolName: pool?.name || poolId,
+              values: { ph, cl, t },
+              thresholds: th,
+              alerts,
+              mode: notifyMode,
+            });
+          } catch (mailErr) {
+            console.error("Error enviando mail de alerta:", mailErr);
+          }
+        }
+      }
+    }
 
     res.status(201).json({
-      idx: created.fechaHora.getTime(),          // índice único
+      idx: created.fechaHora.getTime(), // índice único
       time: created.fechaHora.toISOString(),
       ph,
       cl,
@@ -187,6 +266,58 @@ await audit({
   }
 });
 
+// ===============================
+//   UMBRALES
+// ===============================
+app.get("/api/thresholds", requireAuth, async (req, res) => {
+  try {
+    const poolIdRaw = req.query.poolId || "pool1";
+    const poolId = await resolvePoolId(req, poolIdRaw);
+
+    const th = await prisma.threshold.findUnique({ where: { poolId } });
+    res.json(th);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Error obteniendo umbrales" });
+  }
+});
+
+// PUT actualizar umbrales
+app.put("/api/thresholds", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.sub;
+    const { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax } =
+      req.body;
+
+    if (!poolId) {
+      return res.status(400).json({ error: "poolId requerido" });
+    }
+
+    const up = await prisma.threshold.upsert({
+      where: { poolId },
+      update: { phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
+      create: { poolId, phMin, phMax, chlorMin, chlorMax, tempMin, tempMax },
+    });
+
+    // buscar nombre de pileta
+    const pool = await prisma.pool.findUnique({ where: { id: poolId } });
+
+    await audit({
+      userId,
+      action: "EDITAR_UMBRAL",
+      module: "Umbrales",
+      detail: pool
+        ? `Actualizó umbrales de la pileta "${pool.name}"`
+        : `Actualizó umbrales de una pileta`,
+      poolId,
+    });
+
+    res.json(up);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Error guardando umbrales" });
+  }
+});
 
 // ===============================
 

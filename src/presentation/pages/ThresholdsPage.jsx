@@ -21,7 +21,34 @@ export default function ThresholdsPage({ onSaved }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // --- NUEVO: manejo de piletas ---
+  // --- NUEVO: configuración de notificaciones ---
+  // NONE = desactivado
+  // EACH = un mail por cada advertencia/crítica
+  // EVERY_5_MIN = como máximo cada 5 minutos
+  // DAILY = como máximo una vez por día
+  const [notifMode, setNotifMode] = useState("NONE");
+
+  // cargar preferencia de notificación desde localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("as_notifMode");
+      if (stored) setNotifMode(stored);
+    } catch {
+      // ignorar errores de localStorage
+    }
+  }, []);
+
+  function handleNotifChange(e) {
+    const value = e.target.value;
+    setNotifMode(value);
+    try {
+      localStorage.setItem("as_notifMode", value);
+    } catch {
+      // ignorar errores
+    }
+  }
+
+  // --- manejo de piletas ---
   const [pools, setPools] = useState([]);
   const [activePoolId, setActivePoolId] = useState(null);
   const [errPools, setErrPools] = useState("");
@@ -106,7 +133,7 @@ export default function ThresholdsPage({ onSaved }) {
 
     try {
       const payload = {
-        poolId: activePoolId, // 👈 ahora se guarda para la pileta seleccionada
+        poolId: activePoolId, // 👈 se guarda para la pileta seleccionada
         ph: {
           min: number(form.phMin, 7.2),
           max: number(form.phMax, 7.8),
@@ -136,8 +163,7 @@ export default function ThresholdsPage({ onSaved }) {
     return <div className="p-4">Cargando…</div>;
   }
 
-  const currentPool =
-    pools.find((p) => p.id === activePoolId) || null;
+  const currentPool = pools.find((p) => p.id === activePoolId) || null;
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -296,6 +322,64 @@ export default function ThresholdsPage({ onSaved }) {
           {msg && (
             <span className="text-sm text-slate-600">{msg}</span>
           )}
+        </div>
+      </div>
+
+      {/* NUEVO: Configuración de alertas por email */}
+      <div className="bg-white border rounded-2xl p-4 shadow-sm space-y-2">
+        <h2 className="text-sm font-semibold text-slate-800">
+          Notificaciones por email
+        </h2>
+        <p className="text-xs text-slate-500">
+          Elegí cuándo querés que AquaSmart te envíe un email si las lecturas
+          quedan en advertencia o crítico. Esta preferencia se guarda en el
+          navegador y se enviará al backend al simular lecturas.
+        </p>
+
+        <div className="mt-2 flex flex-col gap-1 text-sm">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="radio"
+              className="accent-indigo-600"
+              value="NONE"
+              checked={notifMode === "NONE"}
+              onChange={handleNotifChange}
+            />
+            <span>Desactivar notificaciones</span>
+          </label>
+
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="radio"
+              className="accent-indigo-600"
+              value="EACH"
+              checked={notifMode === "EACH"}
+              onChange={handleNotifChange}
+            />
+            <span>Recibir un email por cada advertencia/crítica</span>
+          </label>
+
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="radio"
+              className="accent-indigo-600"
+              value="EVERY_5_MIN"
+              checked={notifMode === "EVERY_5_MIN"}
+              onChange={handleNotifChange}
+            />
+            <span>Como máximo cada 5 minutos</span>
+          </label>
+
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="radio"
+              className="accent-indigo-600"
+              value="DAILY"
+              checked={notifMode === "DAILY"}
+              onChange={handleNotifChange}
+            />
+            <span>Como máximo una vez por día</span>
+          </label>
         </div>
       </div>
     </div>

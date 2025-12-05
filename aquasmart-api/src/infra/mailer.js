@@ -51,3 +51,52 @@ export async function sendPasswordResetMail(to, resetLink) {
     `,
   });
 }
+
+// 👉 NUEVO: mail de alerta por umbrales
+export async function sendAlertMail({
+  to,
+  poolName,
+  values,
+  thresholds,
+  alerts,
+  mode,
+}) {
+  if (!SMTP_USER || !SMTP_PASS) {
+    console.warn("⚠️ SMTP no configurado, no se envía mail real (alerta).");
+    console.warn(`   Pool: ${poolName}`);
+    console.warn(`   Alerts: ${alerts.join(" | ")}`);
+    return;
+  }
+
+  const from = SMTP_FROM || SMTP_USER;
+
+  const subject = `Alerta de AquaSmart - ${poolName}`;
+  const html = `
+    <p>Hola,</p>
+    <p>Se detectaron valores fuera de los umbrales configurados en la pileta <strong>${poolName}</strong>.</p>
+    <ul>
+      ${alerts.map((a) => `<li>${a}</li>`).join("")}
+    </ul>
+    <p><strong>Lectura actual:</strong></p>
+    <ul>
+      <li>pH: ${values.ph}</li>
+      <li>Cloro libre: ${values.cl} ppm</li>
+      <li>Temperatura: ${values.t} °C</li>
+    </ul>
+    <p><strong>Umbrales configurados:</strong></p>
+    <ul>
+      <li>pH: ${thresholds.phMin} – ${thresholds.phMax}</li>
+      <li>Cloro: ${thresholds.chlorMin} – ${thresholds.chlorMax} ppm</li>
+      <li>Temperatura: ${thresholds.tempMin} – ${thresholds.tempMax} °C</li>
+    </ul>
+    <p>Modo de notificación actual: <strong>${mode}</strong></p>
+    <p>Saludos,<br/>Equipo AquaSmart</p>
+  `;
+
+  await mailer.sendMail({
+    from,
+    to,
+    subject,
+    html,
+  });
+}
