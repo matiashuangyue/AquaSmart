@@ -37,7 +37,6 @@ export async function login({ emailOrUsername, password }) {
   return data; // { token, user }
 }
 
-// NUEVO: solicitar reset de contraseña
 export async function requestPasswordReset(emailOrUsername) {
   const r = await fetch(`${API}/api/auth/forgot-password`, {
     method: "POST",
@@ -52,4 +51,21 @@ export async function requestPasswordReset(emailOrUsername) {
   }
 
   return data; // { message: "..."}
+}
+
+// ⭐️ NUEVO: resetear contraseña con token
+export async function resetPassword({ token, newPassword }) {
+  const r = await fetch(`${API}/api/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newPassword }),
+  });
+
+  const data = await safeJson(r);
+
+  if (!r.ok) {
+    throw new Error(data?.error || "No se pudo restablecer la contraseña.");
+  }
+
+  return data; // { message: "Contraseña actualizada correctamente." }
 }

@@ -11,11 +11,28 @@ import HistoryPage from "./presentation/pages/HistoryPage";
 import AuditPage from "./presentation/pages/AuditPage";
 import UsersPage from "./presentation/pages/UsersPage";
 import PoolsPage from "./presentation/pages/PoolsPage";
+import ResetPassword from "./presentation/pages/ResetPassword"; // 👈 NUEVO
 
 const API = import.meta.env.VITE_API_URL;
 
 export default function App() {
-  const [view, setView] = useState(getToken() ? "dash" : "login");
+  // 👇 view inicial ahora mira la URL
+  const [view, setView] = useState(() => {
+    const token = getToken();
+    const path = window.location.pathname;
+
+    // Si NO hay token (no logueado) dejamos pasar las vistas públicas
+    if (!token) {
+      if (path === "/signup") return "signup";
+      if (path === "/forgot") return "forgot";
+      if (path === "/reset-password") return "reset"; // 👈 clave para el link del mail
+      return "login";
+    }
+
+    // Si hay token, vamos al dashboard
+    return "dash";
+  });
+
   const [thVersion, setThVersion] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -99,6 +116,10 @@ export default function App() {
   if (view === "forgot")
     return <ForgotPassword goLogin={() => setView("login")} />;
 
+  // 👇 NUEVO: vista de reset de contraseña
+  if (view === "reset")
+    return <ResetPassword goLogin={() => setView("login")} />;
+
   // Helpers de permisos
   const canViewAudit = permissions.includes("VIEW_AUDIT");
   const canManageUsers = permissions.includes("MANAGE_USERS");
@@ -109,13 +130,14 @@ export default function App() {
   // === VISTAS CON SESIÓN ===
   return (
     <AppLayout onLogout={handleLogout} permissions={permissions}>
-      {view === "dash" && (canViewDashboard ? (
-        <Dashboard thVersion={thVersion} />
-      ) : (
-        <div className="p-4 text-sm text-slate-600">
-          No tenés permiso para ver el Panel principal.
-        </div>
-      ))}
+      {view === "dash" &&
+        (canViewDashboard ? (
+          <Dashboard thVersion={thVersion} />
+        ) : (
+          <div className="p-4 text-sm text-slate-600">
+            No tenés permiso para ver el Panel principal.
+          </div>
+        ))}
 
       {view === "config" &&
         (canManageThresholds ? (
@@ -159,7 +181,6 @@ export default function App() {
         ))}
 
       {view === "pools" && (
-      
         <PoolsPage
           onCreated={() => {
             /* nada aún */

@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireAuth } from "../middlewares/auth.js";
 import { audit } from "../infra/logger.js";
-import { sendPasswordResetMail } from "../infra/mailer.js"; // 👈 NUEVO
+import { sendPasswordResetMail } from "../infra/mailer.js";
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -46,14 +46,12 @@ router.get("/me", requireAuth, async (req, res) => {
 
   if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
 
-  // 🔹 Grupos del usuario
   const groups = user.groups.map((ug) => ({
     id: ug.group.id,
     name: ug.group.name,
     desc: ug.group.desc,
   }));
 
-  // 🔹 Permisos derivados de los grupos (GroupPermission → Permission)
   const permSet = new Set();
   for (const ug of user.groups) {
     for (const gp of ug.group.perms) {
@@ -62,7 +60,7 @@ router.get("/me", requireAuth, async (req, res) => {
       }
     }
   }
-  const permissions = Array.from(permSet); // ej: ["VIEW_DASHBOARD","VIEW_AUDIT",...]
+  const permissions = Array.from(permSet);
 
   res.json({
     id: user.id,
@@ -98,7 +96,6 @@ router.post("/signup", async (req, res) => {
       include: { person: true }
     });
 
-    // Auditoría
     await audit({
       userId: user.id,
       action: "SIGNUP",
@@ -107,7 +104,6 @@ router.post("/signup", async (req, res) => {
       poolId: null,
     });
 
-    // opcional: pileta por defecto
     await prisma.pool.create({ data: { name: "Piscina Principal", ownerId: user.id } });
 
     const token = sign(user);
@@ -128,7 +124,6 @@ router.post("/login", async (req, res) => {
     if (!emailOrUsername || !password)
       return res.status(400).json({ error: "Faltan credenciales" });
 
-    // buscar por username o por email
     let user = await prisma.user.findUnique({ where: { username: emailOrUsername }, include: { person: true } });
     if (!user) {
       const person = await prisma.person.findUnique({ where: { email: emailOrUsername }, include: { user: true } });
@@ -143,7 +138,6 @@ router.post("/login", async (req, res) => {
 
     const token = sign(user);
 
-    // Auditoría
     await audit({
       userId: user.id,
       action: "LOGIN",
@@ -177,12 +171,10 @@ router.post("/forgot-password", async (req, res) => {
       return res.status(400).json({ error: "Email o usuario requerido" });
     }
 
-    // respuesta genérica SIEMPRE (para no filtrar si existe o no)
     const genericResponse = {
       message: "Si la cuenta existe, te enviaremos un email con instrucciones.",
     };
 
-    // buscar usuario
     let user = await prisma.user.findUnique({
       where: { username: emailOrUsername },
       include: { person: true },
@@ -201,12 +193,10 @@ router.post("/forgot-password", async (req, res) => {
       }
     }
 
-    // si no existe o no tiene mail, devolvemos igual OK genérico
     if (!user || !user.person?.email) {
       return res.json(genericResponse);
     }
 
-    // generar token de reset (JWT corto)
     const resetToken = jwt.sign(
       { sub: user.id, type: "reset" },
       JWT_SECRET,
@@ -221,10 +211,8 @@ router.post("/forgot-password", async (req, res) => {
       await sendPasswordResetMail(user.person.email, resetLink);
     } catch (err) {
       console.error("Error enviando mail de reset:", err);
-      // igual devolvemos genérico
     }
 
-    // Auditoría
     await audit({
       userId: user.id,
       action: "FORGOT_PASSWORD",
@@ -237,6 +225,53 @@ router.post("/forgot-password", async (req, res) => {
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: "Error procesando la solicitud" });
+  }
+});
+
+// ⭐️ NUEVO: POST /api/auth/reset-password
+router.post("/reset-password", async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  if (!token || !newPassword) {
+    return res.status(400).json({ error: "Token y nueva contraseña requeridos" });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+
+    if (payload.type !== "reset") {
+      return res.status(400).json({ error: "Token inválido" });
+    }
+
+    const userId = payload.sub;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    await audit({
+      userId,
+      action: "RESET_PASSWORD",
+      module: "Auth",
+      detail: "Contraseña restablecida mediante token",
+      poolId: null,
+    });
+
+    return res.json({ message: "Contraseña actualizada correctamente." });
+  } catch (e) {
+    console.error(e);
+    if (e.name === "TokenExpiredError") {
+      return res.status(400).json({ error: "El enlace de recuperación expiró. Pedí uno nuevo." });
+    }
+    return res.status(400).json({ error: "Token inválido o error al restablecer contraseña." });
   }
 });
 
@@ -253,8 +288,6 @@ router.post("/logout", requireAuth, async (req, res) => {
       poolId: null,
     });
 
-    // Como usamos JWT, no hay "invalidate" real del token.
-    // Solo registramos la acción y devolvemos OK.
     res.status(204).end();
   } catch (e) {
     console.error(e);
